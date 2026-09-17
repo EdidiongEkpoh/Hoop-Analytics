@@ -1,0 +1,28 @@
+SELECT league_id
+    , season
+    , team_id
+    , team_city
+    , team_name
+    , record 
+    , conference
+    , conference_record
+    , division
+    , division_record
+    , wins
+    , losses
+    , win_pct
+    , league_rank
+    , conference_games_back
+    , division_games_back
+    , clinch_indicator
+    , home_record
+    , road_record
+    , last_10_record
+    , ot_record
+    , current_streak
+    , long_win_streak
+    , long_loss_streak
+    , points_per_game
+    , opp_points_per_game   
+    , point_diff_per_game
+FROM {{ ref('stg_standings')  }}

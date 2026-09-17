@@ -1,0 +1,10 @@
+nba_api>1.5.0
+requests>=2.31.0
+numpy>=1.26.0
+pandas>=2.1.0
+streamlit>=1.38
+sqlalchemy>=2.0.52
+psycopg2-binary
+python-dotenv
+plotly>=7.0.0
+dotenv

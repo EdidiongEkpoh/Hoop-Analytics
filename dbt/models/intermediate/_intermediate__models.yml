@@ -1,0 +1,171 @@
+version: 2
+
+models:
+  - name: int_team_game_logs
+    description: One row per game of basic (stg_team_basic_boxscores) and advanced (stg_team_advanced_boxscores).
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - team_id
+  - name: int_player_game_logs
+    description: One row per game of basic (stg_player_basic_boxscores) and advanced (stg_player_advanced_boxscores) for each player
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - player_id
+  
+  - name: int_team_games_with_opponent
+    description: Self-joined against int_team_game_logs to derive opponents' boxscores.
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: team_id
+        tests:
+          - not_null
+      - name: opponent_team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - team_id
+  
+  - name: int_season_game_counts
+    description: Max games played for given season. Used as minimum-games eligibility threshold in fct_player_season_summary
+    columns:
+      - name: season_length
+        description: Max games played by any team this season/league/season_type.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - season_type
+  - name: int_league_season_averages
+    description: League averages for given season/league/season_type. Used to compute relative TS% in fct_player_season_summary
+    columns:
+      - name: league_ts_pct
+        description: League average TS% for the given season/league/season_type.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - season_type
+  
+  - name: int_player_season_stats
+    description: Player season averages for given season/league/season_type. Used to compute relative TS% in fct_player_season_summary
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - season
+              - league_id
+              - season_type
+              - team_id
+  
+  - name: int_team_season_stats
+    description: Team season averages for given season/league/season_type. Used to compute relative TS% in fct_player_season_summary
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: int_player_eligibility
+    description: Calculates minutes game threshold (35% of regular season) and determines if a player meets it for their season (TRUE if Playoffs.)
+    columns:
+      - name: player_id
+        test:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: int_player_possessions
+    description: Aggregates total player possessions over a season.
+    columns:
+      - name: player_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - season
+              - league_id
+              - season_type
+              - team_id
+  
+  - name: int_player_games_with_opponent
+    description: int_player_game_logs joined with player's own team's game-level opponent context to compute steal and block rates.
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: player_id
+        tests:
+          - not_null
+  
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - game_id
+  
+  - name: int_team_season_opponent_stats
+    description: Season averages of what the team allowed
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type

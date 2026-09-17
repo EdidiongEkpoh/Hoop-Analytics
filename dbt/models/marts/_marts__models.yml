@@ -1,0 +1,452 @@
+version: 2
+
+models:
+  - name: dim_teams
+    description: Team identity fields and season standings.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+          - unique
+      - name: full_name
+        description: Team's city and nickname.
+      - name: conference
+      - name: division
+      - name: wins
+      - name: losses
+      - name: win_pct
+  
+  - name: dim_players
+    description: Player bio information and most recent team.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+          - unique
+      - name: current_team_id
+        description: Player's most recent team, if any.
+  
+  - name: fct_team_games
+    description: Team boxscores, including opponent's stats.
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: team_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - team_id
+
+  - name: fct_player_games
+    description: Player boxscores.
+    columns:
+      - name: game_id
+        tests:
+          - not_null
+      - name: player_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - player_id 
+  
+  - name: fct_team_season_summary
+    description: Raw season averages for each team.
+    columns:
+      - name: team_id
+        tests: 
+          - not_null
+      - name: pts_per_game
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_season_summary
+    description: Raw season averages for each player.
+    columns:
+      - name: player_id
+        description: Player's unique identifier, duplicates are created for players who played on multiple teams during the season.
+
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_stats
+    description: Raw total Catch-and-shoot, pull-up, drives, post-ups, and other player tracking stats for each player.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_stats_per_game
+    description: Per game Catch-and-shoot, pull-up, drives, post-ups, and other player tracking stats for each player.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_stats_per_36
+    description: Player season stats per 36 minutes.
+    columns:
+      - name: player_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_stats_per_75
+    description: Player season stats per 75 possessions.
+    columns:
+      - name: player_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+
+  - name: fct_player_stats_per_100
+    description: Player season stats per 100 possessions.
+    columns:
+      - name: player_id
+        tests: 
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_stats_per_100
+    description: Team stats per 100 possessions.
+    columns: 
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_percentiles_per_game
+    description: Percentiles for each raw player stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+
+  - name: fct_player_percentiles_per_36
+    description: Percentiles for each per 36 minute player stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+
+  - name: fct_player_percentiles_per_75
+    description: Percentiles for each per 75 possessions player stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_percentiles_per_100
+    description: Percentiles for each per 100 possessions player stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_percentiles_per_game
+    description: Percentiles for each raw team stats relative to the league/season/season_type.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_percentiles_per_100
+    description: Percentiles for each per 100 possessions team stats relative to the league/season/season_type.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_stats_per_36
+    description: Stats per 36 minute player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_stats_per_75
+    description: Stats per 75 possessions player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_stats_per_100
+    description: Stats per 100 possessions player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_percentiles
+    description: Percentiles for raw player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_percentiles_per_36
+    description: Percentiles for per 36 minute player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_percentiles_per_75
+    description: Percentiles for per 75 possession player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_player_tracking_percentiles_per_100
+    description: Percentiles for per 100 possession player tracking stats relative to the league/season/season_type.
+    columns:
+      - name: player_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - player_id
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_opponent_stats_per_game
+    description: Per game opponent stats for each team.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_opponent_stats_per_100
+    description: Per 100 opponent stats for each team.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+  
+  - name: fct_team_opponent_percentiles_per_game
+    description: Per game opponent stat percentiles for each team relative to the league.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type
+
+  - name: fct_team_opponent_percentiles_per_100
+    description: Per 100 opponent stat percentiles for each team relative to the league.
+    columns:
+      - name: team_id
+        tests:
+          - not_null
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - season
+              - league_id
+              - season_type

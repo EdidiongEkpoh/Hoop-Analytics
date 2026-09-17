@@ -1,0 +1,204 @@
+version: 2
+
+sources: 
+  - name: raw_nba
+    schema: raw
+    description: Raw NBA data via nba_api and loaded into postgres by extract/extract.py (season-level tables contain _extract_season, _extract_league_id, and _extract_season_type).
+
+    tables:
+
+      - name: players
+        description: All active players.
+        columns: 
+          - name: id
+            description: Player ID
+            tests:
+              - not_null
+              - unique:
+                  config: 
+                    severity: warn
+
+      - name: player_info
+        description: Player details.
+        columns: 
+          - name: PERSON_ID
+            quote: true
+            description: Player ID
+            tests:
+              - not_null      
+          - name: _extract_season
+            description: Season of the extract.
+            tests:
+              - not_null
+          - name: _extract_league_id
+            description: League ID of the extract.
+            tests:
+              - not_null          
+      
+
+
+      - name: player_basic_boxscores
+        description: Basic game log data for each player.
+        columns:
+          - name: GAME_ID
+            quote: true
+            description: ID of the game.
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the game stats reference.
+
+        tests: 
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - '"GAME_ID"' 
+                  - '"PLAYER_ID"'
+
+      - name: player_advanced_boxscores
+        description: Advanced game log data for each player.
+        columns:
+          - name: gameId
+            quote: true
+            description: ID of the game
+            tests:
+              - not_null
+          - name: personId
+            quote: true
+            description: ID of the player that the game stats reference.
+            tests:
+              - not_null
+
+      - name: teams
+        description: All teams.
+        columns: 
+          - name: id
+            description: Team ID
+            tests:
+              - not_null
+              - unique:
+                  config: 
+                    severity: warn
+
+      - name: team_rosters
+        description: All team rosters by season.
+        columns:
+          - name: TeamID
+            quote: true
+            description: ID of team
+          - name: PLAYER_ID
+            quote: true
+            description: ID of player on team.
+          - name: _extract_season
+            description: Season of the roster.
+            tests:
+              - not_null
+          - name: _extract_league_id
+            description: League ID of the roster.
+            tests:
+              - not_null
+
+      - name: team_basic_boxscores
+        description: Basic game log data for each team.
+        columns:
+          - name: GAME_ID
+            quote: true
+            description: ID of game.
+          - name: TEAM_ID
+            quote: true
+            description: ID of team that stats reference.
+        tests: 
+          - dbt_utils.unique_combination_of_columns:
+              combination_of_columns:
+                - '"GAME_ID"' 
+                - '"TEAM_ID"'
+
+      - name: team_advanced_boxscores
+        description: Advanced game log data for each team.
+        columns:
+          - name: gameId
+            quote: true
+            description: ID of the game
+          - name: teamId
+            quote: true
+            description: ID of the team stats pertain to.
+        tests: 
+          - dbt_utils.unique_combination_of_columns:
+              combination_of_columns:
+                - '"gameId"' 
+                - '"teamId"'
+
+      - name: standings
+        description: Season standings
+        columns:
+          - name: SeasonID
+            quote: true
+            description: nba_api season identifier
+          - name: TeamID
+            quote: true
+            description: ID of the team.
+        tests: 
+          - dbt_utils.unique_combination_of_columns:
+              combination_of_columns:
+                - '"SeasonID"' 
+                - '"TeamID"'
+
+      - name: shot_chart_detail
+        description: Details on all shots.
+        columns:
+          - name: GAME_ID
+            quote: true
+            description: ID of the game
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+          - name: GAME_EVENT_ID
+            quote: true
+            description: Sequential event ID, unique per shot event for a given player/game.
+          - name: _extract_league_id
+            description: League ID of the extract.
+            tests:
+              - not_null
+            
+        tests: 
+          - dbt_utils.unique_combination_of_columns:
+              arguments:
+                combination_of_columns:
+                  - '"GAME_ID"' 
+                  - '"PLAYER_ID"'
+                  - '"GAME_EVENT_ID"'
+                  - '"_extract_league_id"'
+      
+      - name: shot_zone_league_averages
+        description: League averages from shot zones by season.
+
+      - name: player_catch_shoot_stats
+        description: Player catch and shoot stats by season.
+        columns:
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+      - name: player_drives_stats
+        description: Player drives stats by season.
+        columns:
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+      - name: player_postup_stats
+        description: Player post-up stats by season.
+        columns:
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+      - name: player_pullup_shooting_stats
+        description: Player pull-up shooting stats by season.
+        columns:
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+      - name: player_scoring_breakdown
+        description: Player scoring breakdown stats (points in the paint and assisted vs unassisted buckets).
+        columns:
+          - name: PLAYER_ID
+            quote: true
+            description: ID of the player that the stats pertain to.
+       

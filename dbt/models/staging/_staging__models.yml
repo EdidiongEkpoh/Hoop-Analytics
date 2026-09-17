@@ -1,0 +1,826 @@
+version: 2
+
+models:
+  - name: stg_players
+    description: All active players.
+    columns: 
+      - name: id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: first_name
+        description: The player's first name.
+      - name: last_name
+        description: The player's last name.
+      - name: full_name
+        description: The player's full name.
+      
+  - name: stg_player_info
+    description: Descriptive information for each player.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: first_name
+        description: Player's first name.
+      - name: last_name
+        description: Player's last name.
+      - name: full_name
+        description: Player's full name.
+      - name: birthdate
+        description: Player's birthdate.
+      - name: school
+        description: Player's pre NBA school/club/academy.
+      - name: country
+        description: Player's birth country.
+      - name: height
+        description: Player's height (e.g. "6-5").
+      - name: weight
+        description: Player's weight in pounds.
+      - name: season_exp
+        description: Player's NBA experience ("R" for rookie).
+      - name: jersey
+        description: Player's current jersey number.
+      - name: position
+        description: Player's position.
+      - name: team_id
+        description: Player's current team ID.
+      - name: team_abbreviation
+        description: Abbreviation of player's team.
+      - name: from_year
+        description: Year of player's first NBA appearance.
+      - name: draft_year
+        description: Year player was drafted ("Undrafted" if undrafted).
+      - name: draft_round
+        description: The round the player was drafted in ("Undrafted" if undrafted).
+      - name: draft_number
+        description: The number pick the player was drafted at ("Undrafted" if undrafted).
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id
+  - name: stg_player_basic_boxscores
+    description: Game logs of basic stats for each player.
+    columns: 
+      - name: season_id_code
+        description: nba_api season identifier.
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Player's full name.
+      - name: team_id
+        description: ID of the team that the player's on.
+      - name: team_name
+        description: Name of the team that the player's on.
+      - name: game_id
+        description: ID of the game.
+        tests:
+          - not_null 
+      - name: game_date
+        description: Date of the game.
+      - name: matchup
+        description: Abbreviation of the two teams playing in the game (e.g. GSW @ LAL).
+      - name: wl
+        description: Player's team won or loss the game.
+        tests:
+          - accepted_values:
+              values: ['W', 'L']
+      - name: minutes
+        description: The number of minutes the player played in the game in integer format.
+      - name: fgm
+        description: The amount of field goals the player made in the game.
+      - name: fga
+        description: The amount of field goals the player attempted in the game.
+      - name: fg_pct
+        description: The percentage of field goals that the player made vs attempted in the game.
+      - name: fg3m
+        description: The amount of threes the player made in the game.
+      - name: fg3a
+        description: The amount of threes the player attempted in the game
+      - name: fg3_pct
+        description: The percentage of threes the player made vs attempted in the game.
+      - name: ftm
+        description: The amount of free throws the player made in the game.
+      - name: fta
+        description: The amount of free throws the player attempted in the game.
+      - name: ft_pct 
+        description: The percentage of free throws the player made vs attempted in the game.
+      - name: oreb
+        description: The amount of offensive rebounds the player accumulated in the game.
+      - name: dreb
+        description: The amount of defensive rebounds the player accumulated in the game.
+      - name: reb
+        description: The total number of rebounds the player accumulated in the game.
+      - name: ast
+        description: The number of assists the player accumulated in the game.
+      - name: stl
+        description: The number of steals the player accumulated in the game.
+      - name: blk
+        description: The number of blocks the player accumulated in the game.
+      - name: tov
+        description: The number of turnovers the player accumulated in the game.
+      - name: pf
+        description: The player's total personal fouls in the game.
+      - name: pts
+        description: The total amount of points the player scored in the game.
+      - name: plus_minus
+        description: The raw point differential of the player's team while they were on the court in the game.
+    tests: 
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - player_id
+
+  - name: stg_player_advanced_boxscores
+    description: Game logs of advanced stats for each player.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: game_id
+        description: Id of the game the player played in.
+        tests:
+          - not_null
+      - name: team_id
+        description: Id of the team the player is on.
+      - name: team_city
+        description: City of the team that the player is on.
+      - name: team_name
+        description: Name of the team the player is on.
+      - name: player_id
+        description: Id of the player.
+        tests:
+          - not_null
+      - name: first_name
+        description: Player's first name.
+      - name: last_name
+        description: Player's last name.
+      - name: comment
+        description: Any injury/coaches comments that may have influenced the player's minutes/performance in the game.
+      - name: minutes
+        description: The amount of minutes/seconds the player played in the game (e.g. 41:45).
+      - name: offensive_rating
+        description: The team's offensive rating while the player was on the court in the game.
+      - name: defensive_rating
+        description: The team's defensive rating while the player was on the court in the game.
+      - name: net_rating
+        description: The team's net rating while the player was on the court in the game (offensive_rating - defensive_rating).
+      - name: assist_pct
+        description: The percentage of the team's field goals that the player assisted on while on the court in the game.
+      - name: ast_to_tov
+        description: The ratio of assists to turnovers the player had in the game.
+      - name: oreb_pct
+        description: Percentage of available offensive rebounds the player grabbed in the game.
+      - name: dreb_pct
+        description: Percentage of available defensive rebounds the player grabbed in the game.
+      - name: reb_pct
+        description: The percentage of available total rebounds the player grabbed in the game.
+      - name: tov_pct
+        description: Percentage of player's individual possessions that ended in a turnover in the game.
+      - name: efg_pct
+        description: Player's shooting accuracy in the game. Gives extra credit for three pointers.
+      - name: ts_pct
+        description: Player's total scoring efficiency in the game.
+      - name: usage
+        description: Player's share of team's offensive plays that finished with a shot attempt, free throw, or turnover while they were on the court.
+      - name: pace
+        description: Number of possessions the player was involved in per 48 minutes.
+      - name: possessions
+        description: Raw number of possessions the player was involved in the game.
+    tests: 
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id
+              - player_id
+
+  - name: stg_teams
+    description: All teams.
+    columns: 
+      - name: id
+        description: ID of the team.
+        tests:
+          - not_null
+      - name: full_name
+        description: Team's city and nickname.
+      - name: abbreviation
+        description: Team's abbreviation.
+      - name: nickname
+        description: Team's nickname
+      - name: city
+        description: City that the team plays in.
+      - name: state
+        description: State that the team plays in.
+      - name: year_founded
+        description: Year that the team was founded.
+      
+  - name: stg_team_rosters
+    description: Players on the team for a given season
+    columns:
+      - name: team_id
+        description: ID of the team.
+        tests:
+          - not_null
+      - name: season
+        description: Season that the roster was a part of.
+      - name: league_id_code
+        description: ID of the leaue (e.g. '00' is NBA)
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Player's full name.
+      - name: jersey_number
+        description: Player's jersey number.
+      - name: height
+        description: Player's height (e.g. "6-4")
+      - name: weight
+        description: Player's weight in pounds.
+      - name: birthdate
+        description: Player's date of birth (e.g. "June 30, 2003")
+      - name: age
+        description: Player's age for the season.
+      - name: player_exp
+        description: Number of year's the player has been in the NBA ('R' for rookie).
+      - name: school
+        description: Player's pre NBA school/academy/club
+      - name: how_acquired
+        description: Description of how the team originally acquired the player.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - team_id
+              - player_id
+              - season
+              - league_id
+  
+  - name: stg_team_basic_boxscores
+    description: Game logs of basic stats for teams.
+    columns: 
+      - name: season_id_code
+        description: ID of season the game took place in
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: team_id
+        description: ID of the team that played in the game.
+      - name: team_abbreviation
+        description: Team's abbreviation.
+      - name: team_name
+        description: Name of the team that played in the game
+      - name: game_id
+        description: ID of the game.
+        tests:
+          - not_null 
+      - name: game_date
+        description: Date of the game.
+      - name: matchup
+        description: Abbreviation of the two teams playing in the game (e.g. GSW @ LAL).
+      - name: wl
+        description: Whether the team won or lost the game.
+        tests:
+          - accepted_values:
+              values: ['W', 'L']
+      - name: minutes
+        description: The number of minutes that was played.
+      - name: fgm
+        description: The amount of field goals the team made in the game.
+      - name: fga
+        description: The amount of field goals the team attempted in the game.
+      - name: fg_pct
+        description: The percentage of field goals that the team made vs attempted in the game.
+      - name: fg3m
+        description: The amount of threes the team made in the game.
+      - name: fg3a
+        description: The amount of threes the team attempted in the game
+      - name: fg3_pct
+        description: The percentage of threes the team made vs attempted in the game.
+      - name: ftm
+        description: The amount of free throws the team made in the game.
+      - name: fta
+        description: The amount of free throws the team attempted in the game.
+      - name: ft_pct 
+        description: The percentage of free throws the team made vs attempted in the game.
+      - name: oreb
+        description: The amount of offensive rebounds the team accumulated in the game.
+      - name: dreb
+        description: The amount of defensive rebounds the team accumulated in the game.
+      - name: reb
+        description: The total number of rebounds the team accumulated in the game.
+      - name: ast
+        description: The number of assists the team accumulated in the game.
+      - name: stl
+        description: The number of steals the team accumulated in the game.
+      - name: blk
+        description: The number of blocks the team accumulated in the game.
+      - name: tov
+        description: The number of turnovers the team accumulated in the game.
+      - name: pf
+        description: The team's total fouls in the game.
+      - name: pts
+        description: The total amount of points the team scored in the game.
+      - name: plus_minus
+        description: The team's raw point differential in the game.
+    tests: 
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id 
+              - team_id
+  
+  - name: stg_team_advanced_boxscores
+    description: Boxscores of advanced stats for teams.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: game_id
+        description: Id of the game the team played in.
+        tests:
+          - not_null
+      - name: team_id
+        description: Id of the team that the stats pertain to
+      - name: team_city
+        description: City of the team that the stats pertain to
+      - name: team_name
+        description: Name of the team the the stats pertain to
+      - name: minutes
+        description: The total of minutes:seconds the team played in the game (e.g. 240:00).
+      - name: offensive_rating
+        description: The team's offensive rating in the game.
+      - name: defensive_rating
+        description: The team's defensive rating in the game.
+      - name: net_rating
+        description: The team's net rating in the game (offensive_rating - defensive_rating).
+      - name: assist_pct
+        description: The percentage of the team's field goals that were assisted.
+      - name: ast_to_tov
+        description: The team's ratio of assists to turnovers in the game.
+      - name: oreb_pct
+        description: Percentage of available offensive rebounds the team grabbed in the game.
+      - name: dreb_pct
+        description: Percentage of available defensive rebounds the team grabbed in the game.
+      - name: reb_pct
+        description: The percentage of available total rebounds the team grabbed in the game.
+      - name: tov_pct
+        description: Percentage of team's possessions that ended in a turnover in the game.
+      - name: efg_pct
+        description: Team's shooting accuracy in the game. Gives extra credit for three pointers.
+      - name: ts_pct
+        description: Tteam's total scoring efficiency in the game.
+      - name: pace
+        description: Number of possessions the team was involved in per 48 minutes.
+      - name: possessions
+        description: Raw number of possessions the team was involved in the game.
+    tests: 
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id 
+              - team_id
+  
+  - name: stg_standings
+    description: Season standings.
+    columns:
+      - name: league_id_code
+        description: League identifier (e.g. "00" for NBA).
+      - name: season_id_code
+        description: nba_api season identifier.
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: team_id
+        description: ID of the team.
+        tests:
+          - not_null
+      - name: team_city
+        description: City of the team.
+      - name: team_name
+        description: Name of the team.
+      - name: record
+        description: Team's overall season record ("70-12").
+      - name: conference
+        description: Conference the team plays in (Eastern or Western).
+      - name: conference_record
+        description: Conference win-loss record (e.g "23-9").
+      - name: division
+        description: Division the team plays in.
+      - name: division_record
+        description: Division win-loss record (e.g "10-3").
+      - name: wins
+        description: Team's total wins in the season.
+      - name: losses
+        description: Team's total losses in the season.
+      - name: win_pct
+        description: Win percentage (wins / games played).
+      - name: league_rank
+        description: Team's overall rank in the league by winning percentage
+      - name: conference_games_back
+        description: Number of games back from conference's first seed.
+      - name: division_games_back
+        description: Number of games back from the division lead.
+      - name: clinch_indicator
+        description: Text flag for clinched playoff/division/conference status, if applicable.
+      - name: home_record
+        description: Home win-loss record (e.g. "15-8").
+      - name: road_record
+        description: Road win-loss record (e.g "12-9").
+      - name: last_10_record
+        description: Team's record in the last 10 games (e.g. "7-3").
+      - name: ot_record
+        description: Team's record in games that go to overtime (e.g. "7-3").
+      - name: current_streak
+        description: Team's current win or loss streak (e.g "W3" or "L2").
+      - name: long_win_streak
+        description: Team's longest winning streak of the season.
+      - name: long_loss_streak
+        description: Team's longest losing streak of the season.
+      - name: points_per_game
+        description: Team's average points per game.
+      - name: opp_points_per_game
+        description: Team's average points allowed per game.
+      - name: point_diff_per_game
+        description: Team's average point differential per game.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season_id_code
+              - team_id
+  
+  - name: stg_shot_chart_detail
+    description: Details on all shots.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: game_id
+        description: ID of the game the shot occured in.
+        tests:
+          - not_null
+      - name: game_event_id
+        description: Sequential event ID, unique per shot event for a given player/game.
+        tests:
+          - not_null
+      - name: player_id
+        description: ID of the player who took the shot.
+        tests:
+          - not_null 
+      - name: player_name
+        description: Name of the player who took the shot.
+      - name: team_id
+        description: ID of the shooting player's team.
+      - name: team_name
+        description: Name of the shooting player's team.
+      - name: quarter
+        description: Quarter the shot was taken in (5+ indicates overtime).
+      - name: minutes_remaining
+        description: Minutes remaining in the period when the shot was taken.
+      - name: seconds_remaining
+        description: Seconds remaining in the period when the shot was taken.
+      - name: event_type
+        description: Event outcome, "Made Shot" or "Missed Shot".
+      - name: action_type
+        description: Type of shot (e.g. "Jump Shot", "Layup", "Dunk")
+      - name: shot_type
+        description: '"2 PT Field Goal" or "3PT Field Goal"'
+      - name: shot_zone_basic
+        description: Broad court zone (e.g. "Restricted Area", "Mid-Range", "Above the Break 3").
+      - name: shot_zone_area
+        description: Left/right/center court area (e.g. "Left Side(L)", "Center(C)")
+      - name: shot_zone_range
+        description: Distance bucket (e.g. "Less than 8 ft.", "24+ ft.")
+      - name: shot_distance
+        description: Shot distance from the basket, in feet.
+      - name: loc_x
+        description: Shot X-coordinate on the court grid.
+      - name: loc_y
+        description: Shot Y-coordinate on the court grid.
+      - name: shot_attempted_flag
+        description: 1 for every row (all rows are attempts); kept for compatibility with raw API's shape.
+      - name: shot_made_flag
+        description: 1 if the shot was made, 0 if missed.
+        tests:
+          - accepted_values:
+              values: [0, 1]
+      - name: game_date
+        description: Date the game was played.
+    tests: 
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - game_id 
+              - player_id
+              - game_event_id
+              - league_id
+  
+
+  - name: stg_shot_zone_league_averages
+    description: League average FG% by shot zones by season.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: shot_zone_basic
+        description: Broad court zone.
+      - name: shot_zone_area
+        description: Left/right/center court area.
+      - name: shot_zone_range
+        description: Distance bucket.
+      - name: fga 
+        description: League-wide total field goal attempts from the zone.
+      - name: fgm
+        description: League-wide total field goal makes from the zone.
+      - name: fg_pct
+        description: League-wide field goal percentage from this zone.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - season_type
+              - league_id
+              - shot_zone_basic
+              - shot_zone_area
+              - shot_zone_range
+    
+  - name: stg_player_catch_shoot_stats
+    description: Player catch and shoot stats.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Name of the player.
+      - name: team_id
+        description: ID of the team the player is on.
+      - name: team_abbreviation
+        description: Abbreviation of the team the player is on.
+      - name: minutes
+        description: Total minutes played.
+      - name: catch_shoot_fgm 
+        description: Total catch and shoot field goal makes.
+      - name: catch_shoot_fga
+        description: Total catch and shoot field goal attempts.
+      - name: catch_shoot_fg_pct
+        description: Catch and shoot field goal percentage.
+      - name: catch_shoot_fg3m
+        description: Total catch and shoot three point makes.
+      - name: catch_shoot_fg3a
+        description: Total catch and shoot three point attempts.
+      - name: catch_shoot_fg3_pct
+        description: Catch and shoot three point percentage.
+      - name: catch_shoot_efg
+        description: Catch and shoot effective field goal percentage.
+      - name: catch_shoot_pts
+        description: Total points scored on catch and shoot attempts.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id
+              - season_type
+  
+  - name: stg_player_drives_stats
+    description: Player drives stats.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Name of the player.
+      - name: team_id
+        description: ID of the team the player is on.
+      - name: team_abbreviation
+        description: Abbreviation of the team the player is on.
+      - name: minutes
+        description: Total minutes played.
+      - name: drive_fgm 
+        description: Total drives field goal makes.
+      - name: drive_fga
+        description: Total drives field goal attempts.
+      - name: drive_fg_pct
+        description: Drives field goal percentage.
+      - name: drive_ftm
+        description: Total free throws made from drives attempts.
+      - name: drive_fta
+        description: Total free throws attempted from drives attempts.
+      - name: drive_ft_pct
+        description: Drives free throw percentage.
+      - name: drive_pts
+        description: Total points scored on drives attempts.
+      - name: drive_ast
+        description: Total assists on drives attempts.
+      - name: drive_tov
+        description: Total turnovers on drives attempts.
+      - name: drive_pf
+        description: Total personal fouls on drives attempts.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id
+              - season_type
+  
+  - name: stg_player_postup_stats
+    description: Player post-up stats.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Name of the player.
+      - name: team_id
+        description: ID of the team the player is on.
+      - name: team_abbreviation
+        description: Abbreviation of the team the player is on.
+      - name: minutes
+        description: Total minutes played.
+      - name: touches
+        description: Total number of touches.
+      - name: post_touches
+        description: Total number of post-up touches.
+      - name: post_touch_fgm
+        description: Total post-up field goal makes.
+      - name: post_touch_fga
+        description: Total post-up field goal attempts.
+      - name: post_touch_fg_pct
+        description: Post-up field goal percentage.
+      - name: post_touch_ftm
+        description: Total free throws made from post-up attempts.
+      - name: post_touch_fta
+        description: Total free throws attempted from post-up attempts.  
+      - name: post_touch_ft_pct
+        description: Post-up free throw percentage.
+      - name: post_touch_pts
+        description: Total points scored on post-up attempts.
+      - name: post_touch_ast
+        description: Total assists on post-up attempts.   
+      - name: post_touch_tov
+        description: Total turnovers on post-up attempts.
+      - name: post_touch_pf
+        description: Total personal fouls on post-up attempts.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id 
+              - season_type
+  
+  - name: stg_player_pullup_shooting_stats
+    description: Player pull-up shooting stats.
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Name of the player.
+      - name: team_id
+        description: ID of the team the player is on.
+      - name: team_abbreviation
+        description: Abbreviation of the team the player is on.
+      - name: minutes
+        description: Total minutes played.
+      - name: pullup_fgm 
+        description: Total pull-up field goal makes.
+      - name: pullup_fga
+        description: Total pull-up field goal attempts.
+      - name: pullup_fg_pct
+        description: Pull-up field goal percentage.
+      - name: pullup_fg3m
+        description: Total pull-up three point makes.
+      - name: pullup_fg3a
+        description: Total pull-up three point attempts.
+      - name: pullup_fg3_pct
+        description: Pull-up three point percentage.
+      - name: pullup_efg_pct
+        description: Effective field goal percentage from pull-up shots.
+      - name: pullup_pts
+        description: Total points scored on pull-up attempts.
+    tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id 
+              - season_type
+  
+  - name: stg_player_scoring_breakdown
+    description: Player scoring breakdown stats (points in the paint and assisted vs unassisted buckets).
+    columns:
+      - name: season
+        description: CLI-driven season string for this extract run (e.g. "2025-26").
+      - name: league_id
+        description: League ID for this extract run (e.g. "00" for NBA).
+      - name: season_type
+        description: Season type for this extract run ("Regular Season" or "Playoffs").
+      - name: player_id
+        description: ID of the player.
+        tests:
+          - not_null
+      - name: player_name
+        description: Name of the player.
+      - name: team_id
+        description: ID of the team the player is on.
+      - name: team_abbreviation
+        description: Abbreviation of the team the player is on.
+      - name: minutes
+        description: Total minutes played.
+      - name: pct_pts_paint
+        description: Percentage of points scored in the paint.
+      - name: pct_uast_2pm
+        description: Percentage of unassisted two-point makes.
+      - name: pct_ast_2pm
+        description: Percentage of assisted two-point makes.
+      - name: pct_uast_3pm
+        description: Percentage of unassisted three-point makes.
+      - name: pct_ast_3pm
+        description: Percentage of assisted three-point makes.
+      - name: pct_uast_fgm
+        description: Percentage of unassisted field goal makes.
+      - name: pct_ast_fgm
+        description: Percentage of assisted field goal makes.
+    tests:  
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns:
+              - season
+              - league_id
+              - player_id 
+              - season_type
