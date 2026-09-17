@@ -10,11 +10,11 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__LOAD_EXAMPLES: "false"
     AIRFLOW__API__AUTH_BACKENDS: "airflow.api.auth.backend.basic_auth"
     # Credentials for the NBA warehouse DB
-    DB_HOST: ${NBA_DB_HOST}
-    DB_PORT: ${NBA_DB_PORT}
-    DB_NAME: ${NBA_DB_NAME}
-    DB_USER: ${NBA_DB_USER}
-    DB_PASSWORD: ${NBA_DB_PASSWORD}
+    NBA_DB_HOST: hoop-analytics-warehouse-db
+    NBA_DB_PORT: ${NBA_DB_PORT}
+    NBA_DB_NAME: ${NBA_DB_NAME}
+    NBA_DB_USER: ${NBA_DB_USER}
+    NBA_DB_PASSWORD: ${NBA_DB_PASSWORD}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./extract:/opt/airflow/extract

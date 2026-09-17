@@ -1,0 +1,12 @@
+hoop_analytics:
+  target: dev
+  outputs: 
+    dev:
+      type: postgres
+      host: "{{ env_var('NBA_DB_HOST') }}"
+      port: "{{ env_var('NBA_DB_PORT') | as_number}}"
+      user: "{{ env_var('NBA_DB_USER') }}"
+      password: "{{ env_var('NBA_DB_PASSWORD') }}"
+      dbname: "{{ env_var('NBA_DB_NAME') }}" 
+      schema: staging
+      threads: 4

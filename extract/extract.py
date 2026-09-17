@@ -20,11 +20,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 load_dotenv()
-DB_USER = os.environ.get('NBA_DB_USER')
-DB_PASSWORD = os.environ.get('NBA_DB_PASSWORD')
-DB_NAME = os.environ.get('NBA_DB_NAME')
-DB_HOST = os.environ.get('NBA_DB_HOST')
-DB_PORT = os.environ.get('NBA_DB_PORT')
+NBA_DB_USER = os.environ.get('NBA_DB_USER')
+NBA_DB_PASSWORD = os.environ.get('NBA_DB_PASSWORD')
+NBA_DB_NAME = os.environ.get('NBA_DB_NAME')
+NBA_DB_HOST = os.environ.get('NBA_DB_HOST')
+NBA_DB_PORT = os.environ.get('NBA_DB_PORT')
 
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 2
@@ -488,7 +488,7 @@ def run_extract(season, league_id, season_type, engine, incremental=False):
 def main():
     args = parse_args()
     CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}")
+    engine = create_engine(f"postgresql://{NBA_DB_USER}:{NBA_DB_PASSWORD}@{NBA_DB_HOST}:{NBA_DB_PORT}/{NBA_DB_NAME}")
 
     start_script = time.time()
 

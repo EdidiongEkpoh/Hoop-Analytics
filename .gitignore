@@ -10,6 +10,8 @@ dbt/target/
 dbt/dbt_packages/
 dbt/logs/
 dbt/.vscode/
+dbt/package-lock.yml
+dbt/.user.yml
 logs/
 
 airflow/logs/

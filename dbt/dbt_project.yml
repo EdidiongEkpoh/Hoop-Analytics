@@ -1,9 +1,7 @@
 name: 'hoop_analytics'
-profile: hoop_analytics
+profile: 'hoop_analytics'
 version: '1.0.0'
 config-version: 2
-
-profile: 'hoop_analytics'
 
 model-paths: ['models']
 seed-paths: ['seeds']
