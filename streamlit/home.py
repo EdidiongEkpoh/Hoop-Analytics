@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import requests
 from PIL import Image
 import io
-st.set_page_config(page_title="NBA Analytics", layout="wide")
+st.set_page_config(page_title="Hoop Analytics", layout="wide")
 
 st.markdown(
     '''
