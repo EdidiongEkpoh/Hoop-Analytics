@@ -2,7 +2,7 @@ WITH source AS (
     SELECT *
     FROM {{ source('raw_nba', 'teams')}}
 )
-SELECT CAST(id AS VARCHAR) AS id
+SELECT DISTINCT CAST(id AS VARCHAR) AS id
     , CAST(full_name AS VARCHAR) AS full_name 
     , CAST(abbreviation AS VARCHAR) AS abbreviation
     , CAST(nickname AS VARCHAR) AS nickname

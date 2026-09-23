@@ -1,7 +1,7 @@
 WITH source AS (
     SELECT *FROM {{ source('raw_nba', 'shot_chart_detail') }}
 )
-SELECT CAST(_extract_season AS VARCHAR) AS season
+SELECT DISTINCT CAST(_extract_season AS VARCHAR) AS season
     , CAST(_extract_league_id AS VARCHAR) AS league_id
     , CAST(_extract_season_type AS VARCHAR) AS season_type
     , CAST("GAME_ID" AS VARCHAR) AS game_id

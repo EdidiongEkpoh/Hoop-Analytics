@@ -2,7 +2,7 @@ WITH source AS (
     SELECT *
     FROM {{ source('raw_nba', 'standings') }}
 )
-SELECT CAST("LeagueID" AS VARCHAR) AS league_id_code
+SELECT DISTINCT CAST("LeagueID" AS VARCHAR) AS league_id_code
     , CAST("SeasonID" AS VARCHAR) AS season_id_code
     , CAST(_extract_season AS VARCHAR) AS season
     , CAST(_extract_league_id AS VARCHAR) AS league_id

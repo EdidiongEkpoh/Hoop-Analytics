@@ -39,7 +39,7 @@ SEASON_LEVEL_TABLES = [
     "raw.team_rosters", "raw.team_basic_boxscores", 
     "raw.standings", "raw.shot_chart_detail", "raw.shot_zone_league_averages",
     "raw.player_catch_shoot_stats", "raw.player_drives_stats", "raw.player_pullup_shooting_stats",
-    "raw.player_postup_stats", "raw.player_scoring_breakdown"
+    "raw.player_postup_stats", "raw.player_scoring_breakdown", "raw.player_advanced_boxscores", "raw.team_advanced_boxscores"
 ]
 LEAGUE_TYPE = {"00": "NBA", "10": "WNBA", "20": "G League"}
 def fetch_with_retry(fetch_fn, *args, max_retries=MAX_RETRIES, **kwargs):
@@ -66,24 +66,22 @@ def get_checkpoint_paths(season, league_id, season_type):
 def clear_season_level(season, league_id, season_type, engine, incremental=False):
     tables_to_clear = SEASON_LEVEL_TABLES
     if incremental:
-        skip = ["raw.player_advanced_boxscores", "raw.team_advanced_boxscoers"]
+        skip = ["raw.player_advanced_boxscores", "raw.team_advanced_boxscores"]
         tables_to_clear = [t for t in SEASON_LEVEL_TABLES if t not in skip]
-
     inspector = inspect(engine)
+    tables_to_clear = ['raw.standings']
     with engine.begin() as conn:
-        for table_name in SEASON_LEVEL_TABLES:
+        for table_name in tables_to_clear:
             schema, table = table_name.split('.')
-            if not inspector.has_table(table, schema=schema) or (table_name in ["raw.player_info", "raw.team_rosters"] and season_type == 'Playoffs'):
+            if not inspector.has_table(table, schema=schema):
                 logging.info(f"Skipping clear for {table_name}.")
-            elif table_name in ["raw.player_info", "raw.team_rosters"] and season_type == 'Regular Season':
+            elif table_name in ["raw.player_info", "raw.team_rosters"]:
                 conn.execute(
                     text(f"""
                         DELETE FROM {schema}.{table}
                         WHERE _extract_season = :season
                             AND _extract_league_id = :league
-                            
-                    """), 
-                    {"season": season, "league": league_id}
+                    """), {"season": season, "league": league_id}
                 )
                 logging.info(f"Cleared existing rows for {season}/{LEAGUE_TYPE[league_id]} from {table_name}.")
             else:
@@ -115,91 +113,17 @@ def load_to_postgres(df, table_name, engine, if_exists="append"):
 
 def get_bulk_pulls(season, league_id, season_type):
     pulls = [
-        {
-            "name": "all_players",
-            "fetch_fn": lambda: pd.DataFrame(players.get_players()),
-            "table": "raw.players",
-            "static": True
-        },
-        {
-            "name": "all_teams",
-            "fetch_fn": lambda: pd.DataFrame(teams.get_teams()),
-            "table": "raw.teams",
-            "static": True
-        },
-        {
-            "name": "player_basic_boxscores",
-            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
-                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="P"
-            ).get_data_frames()[0],
-            "table": "raw.player_basic_boxscores"
-        },
-        {
-            "name": "team_basic_boxscores",
-            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
-                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="T"
-            ).get_data_frames()[0],
-            "table": "raw.team_basic_boxscores"
-        },
-        {
-            "name": "catch_shoot_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="CatchShoot",
-                player_or_team = 'Player'
-            ).get_data_frames()[0],
-            "table": "raw.player_catch_shoot_stats"
-        },
-        {
-            "name": "drives_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="Drives",
-                player_or_team = 'Player'
+        
+    ]    
 
-            ).get_data_frames()[0],
-            "table": "raw.player_drives_stats"
-        },
-        {
-            "name": "pullup_shooting_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PullUpShot",
-                player_or_team = 'Player'   
-            ).get_data_frames()[0],
-            "table": "raw.player_pullup_shooting_stats"
-        },
-        {
-            "name": "postup_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PostTouch",
-                player_or_team = 'Player'
-            ).get_data_frames()[0],
-            "table": "raw.player_postup_stats"
-        },
-        {
-            "name": "scoring_breakdown",
-            "fetch_fn": lambda: leaguedashplayerstats.LeagueDashPlayerStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, measure_type_detailed_defense="Scoring"
-            ).get_data_frames()[0],
-            "table": "raw.player_scoring_breakdown"
-        }
-    ]
-    if season == '2019-20' and season_type == 'Regular Season':
-        exclude_cols = ['ReturnToPlay_East_PI_Flag', 'ReturnToPlay_West_PI_Flag', 'ReturnToPlay_Already_Eliminated']
+    if season_type == "Regular Season":
         pulls.append({
             "name": "team_standings",
             "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
-                league_id, season=season, season_type=season_type
-            ).get_data_frames()[0].drop(columns=exclude_cols),
-            "table": "raw.standings"
-        })
-    elif season != '2019-20' and season_type == "Regular Season":   
-        pulls.append({
-            "name": "team_standings",
-            "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
-                league_id, season=season, season_type=season_type
+                league_id=league_id, season=season, season_type=season_type
             ).get_data_frames()[0],
-            "table": "raw.standings"
+            "table": 'raw.standings'
         })
-    
     return pulls
 
 def get_advanced_boxscores():
@@ -328,12 +252,10 @@ def team_dimension_extract(season, league_id, season_type, engine):
 
     logging.info(f"Team dimension extract: {len(rosters)} succeeded, {len(failed_teams)} failed.")
 
-def player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths):
+def player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=False):
     player_info_pull = get_player_info()
-    info_dict = {'player_info': []}
-    id_dict = {'processed': [], 'failed': []}
     previously_processed = []
-    if checkpoint_paths['processed_players'].exists():
+    if incremental and checkpoint_paths['processed_players'].exists():
         with open(checkpoint_paths['processed_players']) as f:
             previously_processed = json.load(f)
     
@@ -467,23 +389,23 @@ def run_extract(season, league_id, season_type, engine, incremental=False):
             logging.error(f"Error occurred while fetching data for {pull['name']}: {e}")
             season_stats[pull['name']] = None
 
-    logging.info(f"{'---' * 10} Game-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    if season_stats.get('team_basic_boxscores') is None:
-        raise RuntimeError("team_basic_boxscores failed to load. Therefore cannot derive game_ids for game-level extract.")
-    game_ids = season_stats['team_basic_boxscores']['GAME_ID'].unique()
-    game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=incremental)
+    #logging.info(f"{'---' * 10} Game-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    #if season_stats.get('team_basic_boxscores') is None:
+        #raise RuntimeError("team_basic_boxscores failed to load. Therefore cannot derive game_ids for game-level extract.")
+    #game_ids = season_stats['team_basic_boxscores']['GAME_ID'].unique()
+    #game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=incremental)
 
-    logging.info(f"{'---' * 10} Team dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    team_dimension_extract(season, league_id, season_type, engine)
+    #logging.info(f"{'---' * 10} Team dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    #team_dimension_extract(season, league_id, season_type, engine)
 
-    logging.info(f"{'---' * 10} Player dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    if season_stats.get('player_basic_boxscores') is None:
-        raise RuntimeError("player_basic_boxscores failed to load. Therefore cannot derive player_ids for player-level extract.")
-    player_ids = season_stats['player_basic_boxscores']['PLAYER_ID'].unique()
-    player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths)
+    #logging.info(f"{'---' * 10} Player dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    #if season_stats.get('player_basic_boxscores') is None:
+        #raise RuntimeError("player_basic_boxscores failed to load. Therefore cannot derive player_ids for player-level extract.")
+    #player_ids = season_stats['player_basic_boxscores']['PLAYER_ID'].unique()
+    #player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths)
 
-    logging.info(f"{'---' * 10} Shot chart extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    shot_chart_extract(season, league_id, season_type, engine)
+    #logging.info(f"{'---' * 10} Shot chart extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    #shot_chart_extract(season, league_id, season_type, engine)
 
 def main():
     args = parse_args()

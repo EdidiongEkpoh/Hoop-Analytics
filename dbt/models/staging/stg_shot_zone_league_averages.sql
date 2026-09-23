@@ -2,7 +2,7 @@ WITH source AS (
     SELECT *
     FROM {{ source('raw_nba', 'shot_zone_league_averages') }}
 )
-SELECT CAST(_extract_season AS VARCHAR) AS season
+SELECT DISTINCT CAST(_extract_season AS VARCHAR) AS season
     , CAST(_extract_league_id AS VARCHAR) AS league_id
     , CAST(_extract_season_type AS VARCHAR) AS season_type
     , CAST("SHOT_ZONE_BASIC" AS VARCHAR) AS shot_zone_basic

@@ -7,7 +7,7 @@ WITH source AS (
         , ROW_NUMBER() OVER (PARTITION BY "gameId", "personId" ORDER BY "possessions" DESC) AS rn
     FROM source
 )
-SELECT CAST(_extract_season AS VARCHAR) AS season
+SELECT DISTINCT CAST(_extract_season AS VARCHAR) AS season
     , CAST(_extract_league_id AS VARCHAR) AS league_id
     , CAST(_extract_season_type AS VARCHAR) AS season_type
     , CAST("gameId" AS VARCHAR) AS game_id 
