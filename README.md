@@ -4,7 +4,7 @@ An end-to-end NBA analytics platform. Built by Python pipeline that pulls data f
 includes daily in-season refreshes via Airflow, utilizes dbt to transform raw data into layers, and a 
 multi-page Streamlit dashboard that features an overview, team, player, and comparison pages.
 
-**Live App:** *[https://hoop-analytics-jekmmdgrkfr8s4by9sjhgv.streamlit.app/]*
+[Live App](https://hoop-analytics-jekmmdgrkfr8s4by9sjhgv.streamlit.app/)
 
 
 # Four Pages
@@ -92,8 +92,8 @@ hoop-analytics/
 6. Misc. tweaks to UI
 
 # Inspiration
-I love basketball and I love data. Two sites that have blended these two concepts beautifully are databallr ((Site)[https://databallr.com/] | (Twitter)[https://x.com/databallr])
-and Hoopology ((Site)[https://hoopologyviz.com/] | (Twitter)[https://x.com/Justinpinnix]). I wanted to make a version of my own so that 
+I love basketball and I love data. Two sites that have blended these two concepts beautifully are databallr ([Site](https://databallr.com/) | [Twitter](https://x.com/databallr))
+and Hoopology ([Site](https://hoopologyviz.com/) | [Twitter](https://x.com/Justinpinnix)). I wanted to make a version of my own so that 
 I could fully appreciate the lengths that the two creators ventured to 
 put togehter their sites, and so that I can keep up with the current hoop landscape as the seasons progress. I'll continue to make updates
 to this repo in the hopes of constructing an app half as good as theirs.
