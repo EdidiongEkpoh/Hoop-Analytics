@@ -7,7 +7,7 @@ multi-page Streamlit dashboard that features an overview, team, player, and comp
 [Live App](https://hoop-analytics-jekmmdgrkfr8s4by9sjhgv.streamlit.app/)
 
 
-# Four Pages
+# Main Components
 - **League Overview** - Season standings, league leaders, and visuals that depict general team/player performance
 - **Team Overview** - Four Factors (efg%, REB%, TOV%, FTR) for offense and defense, team rolling net rating, team shot distribution, and player usage
 - **Player Overview** - Per game, per 36, per 75/100 possession counting stats with percentiles, shot charts, and scoring type breakdowns
