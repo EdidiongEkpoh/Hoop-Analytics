@@ -5,8 +5,7 @@ import plotly.graph_objects as go
 import requests
 from PIL import Image
 import io
-import os
-st.write({k: v for k, v in os.environ.items() if k.startswith("NBA_DB")})
+
 st.set_page_config(page_title="Hoop Analytics", layout="wide")
 
 
