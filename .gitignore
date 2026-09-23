@@ -22,4 +22,9 @@ airflow/webserver_config.py
 extract/checkpoints/*.json
 !extract/checkpoints/.gitkeep
 
-*.log
+hoop_analytics.dump
+
+airflow/.DS_Store
+dbt/.DS_Store
+.DS_Store
+extract/.DS_Store
