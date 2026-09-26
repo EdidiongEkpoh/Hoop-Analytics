@@ -71,36 +71,61 @@ bio = run_query(
     '''
     WITH current_info AS (
         SELECT player_id
+            , player_name
             , team_id
             , season
             , league_id
             , jersey_number
             , age
+            , position
+            , height
+            , weight 
+            , school 
+            , how_acquired
         FROM staging_staging.stg_team_rosters
         WHERE player_id = :player_id
             AND team_id = :team_id
             AND season = :season
             AND league_id = :league_id
     )
-    SELECT dp.player_name, dp.position, dp.height, dp.weight, dp.birthdate
-        , dp.school, dp.country
+    SELECT ci.player_name, dp.birthdate
+        , ci.school, dp.country
         , dp.draft_year
-        , CASE 
-            WHEN dp.draft_round = '1' THEN dp.draft_number
-            WHEN dp.draft_round = '2' THEN CAST((CAST(dp.draft_number AS INTEGER)+30) AS VARCHAR)
-          ELSE 'Undrafted' END AS draft_pick
+
+        , draft_number as draft_pick
         , dt.full_name AS team_name, dt.abbreviation
         , ci.jersey_number
         , ci.age
-    FROM staging_marts.dim_players dp
+        , coalesce(ci.height, dp.height) as height
+        , coalesce(ci.weight, dp.weight) as weight
+        , case 
+            when ci.position = 'F-C' then 'Forward/Center'
+            when ci.position = 'C-F' then 'Center/Forward'
+            when ci.position = 'F-G' then 'Forward/Guard'
+            when ci.position = 'G-F' then 'Guard/Forward'
+            when ci.position = 'G' then 'Guard'
+            when ci.position = 'F' then 'Forward'
+            when ci.position = 'C' then 'Center'
+            
+        end as position
+        , ci.how_acquired 
+    from current_info ci 
+    left JOIN staging_marts.dim_players dp on dp.player_id = ci.player_id
     LEFT JOIN staging_marts.dim_teams dt ON dt.team_id = :team_id
-    LEFT JOIN current_info ci ON ci.player_id = dp.player_id
-    WHERE dp.player_id = :player_id
+    WHERE ci.player_id = :player_id
     '''
     , params
 ).iloc[0]
 
-draft_line = f"Undrafted in {bio['draft_year']}" if bio['draft_pick'] == 'Undrafted' else f"Pick #{bio['draft_pick']} in {bio['draft_year']}"
+draft_line = ""
+if bio['draft_pick'] == 'Undrafted':
+    draft_line = 'Undrafted'
+elif bio['draft_pick'] is None and bio['how_acquired'] is None:
+    draft_line = 'Undrafted'
+elif bio['draft_pick'] is None:
+    draft_line = bio['how_acquired']
+else:
+    draft_line = f"Pick #{bio['draft_pick']} in {bio['draft_year']} Draft"
 season_stats = run_query(
     '''
     SELECT pts_per_game
@@ -255,7 +280,7 @@ with info_col:
     st.markdown(
         f"""
         <div style="font-size:16px; font-weight:600; margin-bottom:2px;">
-            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {int(bio['weight'])} lbs | {bio['age']} years old</span>
+            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {bio['weight']} lbs | {bio['age']} years old</span>
         </div>
         """, 
         unsafe_allow_html=True
@@ -263,7 +288,7 @@ with info_col:
     st.markdown(
         f"""
         <div style="font-size:14px; color:#9A9EA6; margin-bottom:100px;">
-            <span style="margin-right: 8px;">{draft_line} Draft | School/Club: {bio['school']}</span>
+            <span style="margin-right: 8px;">{draft_line}| School/Club: {bio['school']}</span>
         </div>
         """,
         unsafe_allow_html=True
@@ -368,9 +393,14 @@ with tab_performance:
 
     fig3 = go.Figure()
     fig3.add_trace(go.Scatter(
-        x=trend['game_date'], y=trend[stat_col], mode='markers', name=f"Game {stat_choice}",
-        marker=dict(size=6, opacity=1, color=trend['wl'].map({'W':'#5DCAA5', 'L': '#E05C5C'})),
-        hovertemplate=f'%{{x|%b %d}}: %{{y{stat_cfg['hover']}}}<extra></extra>'
+        x=trend["game_date"], y=trend[stat_col], mode="markers", name=f"Game {stat_choice}",
+        marker=dict(size=6, opacity=0.4, color=trend["wl"].map({"W": "#5DCAA5", "L": "#E05C5C"})),
+        hovertemplate=f"%{{x|%b %d}}: %{{y{stat_cfg['hover']}}}<extra></extra>",
+    ))
+    fig3.add_trace(go.Scatter(
+        x=trend["game_date"], y=trend["rolling_value"], mode="lines", name=f"{window}-game rolling avg",
+        line=dict(color="#FF6B35", width=3),
+        hovertemplate=f"%{{x|%b %d}}: %{{y{stat_cfg['hover']}}}<extra></extra>",
     ))
     fig3.add_hline(
         y=ref_value, line_dash="dash", line_color="#9A9EA6", opacity=0.6,

@@ -1,3 +1,4 @@
+{{ config(materialized='table') }}
 WITH source AS (
     SELECT *
     FROM {{ source('raw_nba', 'shot_zone_league_averages') }}

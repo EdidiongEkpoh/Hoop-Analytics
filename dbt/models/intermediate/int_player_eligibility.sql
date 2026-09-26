@@ -1,3 +1,5 @@
+{{ config(materialized='table') }}
+
 WITH season_totals AS (
     SELECT player_id
         , season

@@ -1,3 +1,5 @@
+{{ config(materialized='table') }}
+
 WITH source AS (
     SELECT *FROM {{ source('raw_nba', 'shot_chart_detail') }}
 )
