@@ -22,8 +22,8 @@ if mode == "Teams":
             if season_type == 'Playoffs':
                 teams = run_query(
                     '''
-                    SELECT DISTINCT team_id
-                        , team_name
+                    SELECT DISTINCT ds.team_id
+                        , ds.team_name
                     FROM staging_marts.dim_standings ds
                     JOIN staging_marts.fct_team_games tg ON tg.team_id = ds.team_id
                         AND tg.season = ds.season

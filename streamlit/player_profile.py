@@ -583,6 +583,7 @@ with tab_tracking:
             AND team_id = :team_id
             AND season = :season
             AND league_id = :league_id
+            AND season_type = :season_type
         '''
         , params
     )
@@ -603,6 +604,7 @@ with tab_tracking:
             AND team_id = :team_id
             AND season = :season
             AND season_type = :season_type
+            AND league_id = :league_id
         '''
         , params
     )
