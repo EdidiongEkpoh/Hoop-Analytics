@@ -69,7 +69,6 @@ def clear_season_level(season, league_id, season_type, engine, incremental=False
         skip = ["raw.player_advanced_boxscores", "raw.team_advanced_boxscores"]
         tables_to_clear = [t for t in SEASON_LEVEL_TABLES if t not in skip]
     inspector = inspect(engine)
-    tables_to_clear = ['raw.standings']
     with engine.begin() as conn:
         for table_name in tables_to_clear:
             schema, table = table_name.split('.')
@@ -389,23 +388,23 @@ def run_extract(season, league_id, season_type, engine, incremental=False):
             logging.error(f"Error occurred while fetching data for {pull['name']}: {e}")
             season_stats[pull['name']] = None
 
-    #logging.info(f"{'---' * 10} Game-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    #if season_stats.get('team_basic_boxscores') is None:
-        #raise RuntimeError("team_basic_boxscores failed to load. Therefore cannot derive game_ids for game-level extract.")
-    #game_ids = season_stats['team_basic_boxscores']['GAME_ID'].unique()
-    #game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=incremental)
+    logging.info(f"{'---' * 10} Game-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    if season_stats.get('team_basic_boxscores') is None:
+        raise RuntimeError("team_basic_boxscores failed to load. Therefore cannot derive game_ids for game-level extract.")
+    game_ids = season_stats['team_basic_boxscores']['GAME_ID'].unique()
+    game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=incremental)
 
-    #logging.info(f"{'---' * 10} Team dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    #team_dimension_extract(season, league_id, season_type, engine)
+    logging.info(f"{'---' * 10} Team dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    team_dimension_extract(season, league_id, season_type, engine)
 
-    #logging.info(f"{'---' * 10} Player dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    #if season_stats.get('player_basic_boxscores') is None:
-        #raise RuntimeError("player_basic_boxscores failed to load. Therefore cannot derive player_ids for player-level extract.")
-    #player_ids = season_stats['player_basic_boxscores']['PLAYER_ID'].unique()
-    #player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths)
+    logging.info(f"{'---' * 10} Player dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    if season_stats.get('player_basic_boxscores') is None:
+        raise RuntimeError("player_basic_boxscores failed to load. Therefore cannot derive player_ids for player-level extract.")
+    player_ids = season_stats['player_basic_boxscores']['PLAYER_ID'].unique()
+    player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths)
 
-    #logging.info(f"{'---' * 10} Shot chart extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    #shot_chart_extract(season, league_id, season_type, engine)
+    logging.info(f"{'---' * 10} Shot chart extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
+    shot_chart_extract(season, league_id, season_type, engine)
 
 def main():
     args = parse_args()
