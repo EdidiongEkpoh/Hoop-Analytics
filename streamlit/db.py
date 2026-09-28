@@ -15,7 +15,7 @@ def get_engine():
     name = os.environ.get("NBA_DB_NAME")
 
     sslmode = "disable" if host in ("localhost", "127.0.0.1") else "require"
-    return create_engine(f"postgresql://{user}:{password}@{host}:{port}/{name}?sslmode={sslmode}")
+    return create_engine(f"postgresql+psycopg2://{user}:{password}@{host}:{port}/{name}?sslmode={sslmode}")
 
 @st.cache_data(ttl=3600)
 def run_query(sql: str, params: dict | None=None) -> pd.DataFrame:

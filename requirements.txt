@@ -4,7 +4,7 @@ numpy>=1.26.0
 pandas>=2.1.0
 streamlit>=1.38
 sqlalchemy>=2.0.52
-psycopg2-binary
+psycopg2-binary>=2.9
 python-dotenv
 plotly>=7.0.0
 dotenv
