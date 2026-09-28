@@ -308,7 +308,7 @@ with info_col:
     st.markdown(
         f"""
         <div style="font-size:16px; font-weight:600; margin-bottom:2px;">
-            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {int(bio['weight'])}) lbs | {bio['age']} years old</span>
+            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {int(bio['weight'])} lbs | {bio['age']} years old</span>
         </div>
         """, 
         unsafe_allow_html=True
