@@ -13,6 +13,21 @@ clean-targets:
   - 'target'
   - 'dbt_packages'
 
+seeds:
+  hoop_analytics:
+    player_info_overrides:
+      +column_types:
+        player_id: varchar
+        position: varchar
+        height: varchar
+        weight: integer
+        birthdate: date
+        school: varchar
+        country: varchar
+        draft_year: varchar
+        draft_round: varchar
+        draft_number: varchar
+
 models:
   hoop_analytics:
     staging: 
@@ -24,3 +39,5 @@ models:
     marts:
       +materialized: table
       +schema: marts
+
+

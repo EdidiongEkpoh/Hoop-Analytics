@@ -88,8 +88,8 @@ bio = run_query(
             AND season = :season
             AND league_id = :league_id
     )
-    SELECT ci.player_name, dp.birthdate
-        , ci.school, dp.country
+    SELECT dp.player_name, dp.birthdate
+        , COALESCE(ci.school, ''), dp.country
         , dp.draft_year
 
         , draft_number as draft_pick
@@ -106,13 +106,13 @@ bio = run_query(
             when ci.position = 'G' then 'Guard'
             when ci.position = 'F' then 'Forward'
             when ci.position = 'C' then 'Center'
-            
+            ELSE dp.position
         end as position
         , ci.how_acquired 
-    from current_info ci 
-    left JOIN staging_marts.dim_players dp on dp.player_id = ci.player_id
+    FROM staging_marts.dim_players dp
+    LEFT JOIN current_info ci ON ci.player_id = dp.player_id 
     LEFT JOIN staging_marts.dim_teams dt ON dt.team_id = :team_id
-    WHERE ci.player_id = :player_id
+    WHERE dp.player_id = :player_id
     '''
     , params
 ).iloc[0]
@@ -126,6 +126,7 @@ elif bio['draft_pick'] is None:
     draft_line = bio['how_acquired']
 else:
     draft_line = f"Pick #{bio['draft_pick']} in {bio['draft_year']} Draft"
+    
 season_stats = run_query(
     '''
     SELECT pts_per_game
@@ -153,17 +154,19 @@ season_stats = run_query(
 
 
 
-def grain_col(stat, grain, kind):
-    game_stat, suf, game_pctl, pctl_suf = GRAIN_COLS[stat]
+def grain_col(stat, grain):
+    game_stat, suf = GRAIN_COLS[stat]
     if grain == "Per Game":
-        return game_stat if kind == "stat" else game_pctl
+        return game_stat
     tag = {"Per 36": "36", "Per 75": "75", "Per 100": "100"}[grain]
-    return f"{suf}_per_{tag}" if kind == "stat" else f"{pctl_suf}_per_{tag}_percentile"
+    return f"{suf}_per_{tag}"
+
 
 def safe_badge(pctl_row, col_name, higher_is_better):
-    if pctl_row[col_name] is None:
+    if pctl_row is None or pctl_row[col_name] is None:
         return "<span style='color:#6B7280; font-size:12px;'></span>"
     return percentile_badge_html(pctl_row[col_name], higher_is_better)
+
 GRAIN_STATS_TABLE = {
     "Per Game": "fct_player_season_summary",
     "Per 36": "fct_player_stats_per_36",
@@ -179,24 +182,27 @@ GRAIN_PCTL_TABLE = {
 }
 
 GRAIN_COLS = {
-    "pts": ("pts_per_game", "pts", "ppg_percentile", "pts"),
-    "reb": ("rebs_per_game", "reb", "reb_percentile", "reb"),
-    "ast": ("asts_per_game", "ast", "ast_percentile", "ast"),
-    "stl": ("stls_per_game", "stl", "stl_percentile", "stl"),
-    "blk": ("blks_per_game", "blk", "blk_percentile", "blk"),
-    "tov": ("tovs_per_game", "tov", "tov_percentile", "tov"),
+    "pts": ("pts_per_game", "pts"),
+    "reb": ("rebs_per_game", "reb"),
+    "ast": ("asts_per_game", "ast"),
+    "stl": ("stls_per_game", "stl"),
+    "blk": ("blks_per_game", "blk"),
+    "tov": ("tovs_per_game", "tov"),
 }
+
+CONST_STATS = ["fg2_pct", "fg3_pct", "ft_pct", "fg3pr", "ftr", "ts_pct", "oreb_pct", "dreb_pct", "reb_pct"
+            , "assist_pct", "tov_pct", "net_rating"]
+
 rad1, rad2 = st.columns([0.67, 1])
 with rad2:
     grain = st.radio("Grain", ["Per Game", "Per 36", "Per 75", "Per 100"], horizontal=True, label_visibility="collapsed")
-stats_table, pctl_table = GRAIN_STATS_TABLE[grain], GRAIN_PCTL_TABLE[grain]
 
-counting_cols = [grain_col(s, grain, "stat") for s in GRAIN_COLS]
-counting_pctl_cols = [grain_col(s, grain, "pctl") for s in GRAIN_COLS]
+stats_table = GRAIN_STATS_TABLE[grain]
+cols = [grain_col(s, grain) for s in GRAIN_COLS]
 
 grain_stats = run_query(
     f'''
-    SELECT {", ".join(counting_cols)}
+    SELECT {", ".join(cols)}
     FROM staging_marts.{stats_table}
     WHERE player_id = :player_id
         AND team_id = :team_id
@@ -208,20 +214,30 @@ grain_stats = run_query(
 )
 grain_stats = grain_stats.iloc[0] if not grain_stats.empty else None
 
-grain_pctl = run_query(
-    f'''
-    SELECT {", ".join(counting_pctl_cols)}
-    FROM staging_marts.{pctl_table}
-    WHERE player_id = :player_id
-        AND team_id = :team_id
-        AND league_id = :league_id
-        AND season_type = :season_type
-        AND season = :season
-    ''',
-    params
+rank_exprs = ", ".join(
+    f"PERCENT_RANK() OVER (PARTITION BY s.season, s.league_id, s.season_type ORDER BY s.{c}) AS {c}_percentile"
+    for c in cols
 )
-
+grain_ranked = run_query(
+    f'''
+    SELECT s.player_id
+        , s.team_id
+        , {rank_exprs}
+    FROM staging_marts.{stats_table} s 
+    JOIN staging_staging.int_player_eligibility e ON e.player_id = s.player_id
+        AND e.season = s.season
+        AND e.season_type = s.season_type
+        AND e.league_id = s.league_id
+    WHERE s.season = :season
+        AND s.league_id = :league_id
+        AND s.season_type = :season_type
+        AND e.meets_min_games_threshold = TRUE
+    '''
+    , params
+)
+grain_pctl = grain_ranked.loc[grain_ranked['player_id'] == player_id]
 grain_pctl = grain_pctl.iloc[0] if not grain_pctl.empty else None
+
 constants = run_query(
     '''
     SELECT fg_pct, fg2_pct, fg3_pct, ft_pct, ftr, fg3pr, efg_pct, ts_pct, relative_ts_pct
@@ -236,30 +252,41 @@ constants = run_query(
     params
 )
 constants = constants.iloc[0] if not constants.empty else None
-constants_pctl = run_query(
-    '''
-    SELECT fg_pct_percentile, fg2_pct_percentile, fg3_pct_percentile, ft_pct_percentile
-        , ftr_percentile, fg3pr_percentile, efg_percentile, ts_percentile
-        , usage_percentile, stl_pct_percentile, blk_pct_percentile
-        , off_rating_percentile, def_rating_percentile, net_rating_percentile, ast_pct_percentile
-        , tov_pct_percentile, oreb_pct_percentile, dreb_pct_percentile, reb_pct_percentile
-    FROM staging_marts.fct_player_percentiles_per_game
-    WHERE player_id = :player_id
-        AND team_id = :team_id
-        AND season = :season
-        AND season_type = :season_type
+
+rank_exprs = ", ".join(
+    f"PERCENT_RANK() OVER (PARTITION BY s.season, s.league_id, s.season_type ORDER BY s.{c}) AS {c}_percentile"
+    for c in CONST_STATS
+)
+rank_fields = ", ".join(
+    f"{c}_percentile" for c in CONST_STATS
+)
+constants_ranked = run_query(
+    f'''
+    SELECT s.player_id
+        , s.team_id
+        , {rank_exprs}
+    FROM staging_marts.fct_player_season_summary s
+    JOIN staging_staging.int_player_eligibility e ON e.player_id = s.player_id
+        AND e.season = s.season 
+        AND e.season_type = s.season_type
+        AND e.league_id = s.league_id
+    WHERE s.season = :season
+        AND s.season_type = :season_type
+        AND s.league_id = :league_id
+        AND e.meets_min_games_threshold = TRUE
     ''',
     params
 )
 
+constants_pctl = constants_ranked.loc[constants_ranked['player_id'] == player_id]
 constants_pctl = constants_pctl.iloc[0] if not constants_pctl.empty else None
 
 def grain_metric(col, stat, label, higher_is_better=True):
     if grain_stats is None:
         col.metric(label, '-')
         return
-    col.metric(label, f"{grain_stats[grain_col(stat, grain, 'stat')]:.1f}")
-    col.markdown(safe_badge(grain_pctl, grain_col(stat, grain, 'pctl'), higher_is_better), unsafe_allow_html=True)
+    col.metric(label, f"{grain_stats[grain_col(stat, grain)]:.1f}")
+    col.markdown(safe_badge(grain_pctl, f"{grain_col(stat, grain)}_percentile", higher_is_better), unsafe_allow_html=True)
 
 def const_metric(col, key, label, pctl_key=None, higher_is_better=True, fmt="pct"):
     if constants is None:
@@ -280,15 +307,15 @@ with info_col:
     st.markdown(
         f"""
         <div style="font-size:16px; font-weight:600; margin-bottom:2px;">
-            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {bio['weight']} lbs | {bio['age']} years old</span>
+            <span style='margin-right: 8px;'>{bio['position']} #{bio['jersey_number']} | {bio['team_name']} | {bio['height']}, {int(bio['weight'])}) lbs | {bio['age']} years old</span>
         </div>
         """, 
         unsafe_allow_html=True
     )
     st.markdown(
         f"""
-        <div style="font-size:14px; color:#9A9EA6; margin-bottom:100px;">
-            <span style="margin-right: 8px;">{draft_line}| School/Club: {bio['school']}</span>
+        <div style="font-size:14px; color:#9A9EA6; margin-bottom:10px;">
+            <span style="margin-right: 8px;">{draft_line} | School/Club: {bio['school']}</span>
         </div>
         """,
         unsafe_allow_html=True
@@ -323,7 +350,7 @@ with row2:
     r2 = st.columns(4)
     const_metric(r2[0], 'fg3pr', '3PA Rate', 'fg3pr_percentile')
     const_metric(r2[1], 'ftr', 'FTR', 'ftr_percentile')
-    const_metric(r2[2], 'ts_pct', 'TS%', 'ftr_percentile')
+    const_metric(r2[2], 'ts_pct', 'TS%', 'ts_pct_percentile')
     const_metric(r2[3], "relative_ts_pct", "rTS%", pctl_key=None, fmt="signed_pct")
 
 
@@ -336,7 +363,7 @@ with row3:
 
 with row4:
     r4 = st.columns(3)
-    const_metric(r4[0], "assist_pct", "AST%", "ast_pct_percentile")
+    const_metric(r4[0], "assist_pct", "AST%", "assist_pct_percentile")
     const_metric(r4[1], "tov_pct", "TOV%", "tov_pct_percentile", higher_is_better=False, fmt="tov")
     r4[2].metric("Net RTG", f"{constants['net_rating']:.1f}")
    
@@ -435,7 +462,6 @@ with tab_shooting:
             , shot_zone_basic
         FROM staging_staging.stg_shot_chart_detail
         WHERE player_id = :player_id
-            AND team_id = :team_id
             AND season = :season
             AND league_id = :league_id
             AND season_type = :season_type

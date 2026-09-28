@@ -112,17 +112,92 @@ def load_to_postgres(df, table_name, engine, if_exists="append"):
 
 def get_bulk_pulls(season, league_id, season_type):
     pulls = [
-        
-    ]    
+        {
+            "name": "all_players",
+            "fetch_fn": lambda: pd.DataFrame(players.get_players()),
+            "table": "raw.players",
+            "static": True
+        },
+        {
+            "name": "all_teams",
+            "fetch_fn": lambda: pd.DataFrame(teams.get_teams()),
+            "table": "raw.teams",
+            "static": True
+        },
+        {
+            "name": "player_basic_boxscores",
+            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
+                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="P"
+            ).get_data_frames()[0],
+            "table": "raw.player_basic_boxscores"
+        },
+        {
+            "name": "team_basic_boxscores",
+            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
+                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="T"
+            ).get_data_frames()[0],
+            "table": "raw.team_basic_boxscores"
+        },
+        {
+            "name": "catch_shoot_stats",
+            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="CatchShoot",
+                player_or_team = 'Player'
+            ).get_data_frames()[0],
+            "table": "raw.player_catch_shoot_stats"
+        },
+        {
+            "name": "drives_stats",
+            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="Drives",
+                player_or_team = 'Player'
+        ).get_data_frames()[0],
+            "table": "raw.player_drives_stats"
+        },
+        {
+            "name": "pullup_shooting_stats",
+            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PullUpShot",
+                player_or_team = 'Player'   
+            ).get_data_frames()[0],
+            "table": "raw.player_pullup_shooting_stats"
+        },
+        {
+            "name": "postup_stats",
+            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PostTouch",
+                player_or_team = 'Player'
+            ).get_data_frames()[0],
+            "table": "raw.player_postup_stats"
+        },
+        {
+            "name": "scoring_breakdown",
+            "fetch_fn": lambda: leaguedashplayerstats.LeagueDashPlayerStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, measure_type_detailed_defense="Scoring"
+            ).get_data_frames()[0],
+            "table": "raw.player_scoring_breakdown"
+        }
+    ]
 
-    if season_type == "Regular Season":
+    if season == '2019-20' and season_type == 'Regular Season':
+        exclude_cols = ['ReturnToPlay_East_PI_Flag', 'ReturnToPlay_West_PI_Flag', 'ReturnToPlay_Already_Eliminated']
         pulls.append({
             "name": "team_standings",
             "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
                 league_id=league_id, season=season, season_type=season_type
-            ).get_data_frames()[0],
-            "table": 'raw.standings'
+            ).get_data_frames()[0].drop(columns=exclude_cols),
+            "table": "raw.standings"
         })
+    elif season != '2019-20' and season_type == "Regular Season":   
+        pulls.append({
+            "name": "team_standings",
+            "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
+                season=season, season_type=season_type,
+                league_id=league_id, 
+            ).get_data_frames()[0],
+            "table": "raw.standings"
+        })
+    
     return pulls
 
 def get_advanced_boxscores():
