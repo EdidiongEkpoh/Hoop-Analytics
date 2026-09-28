@@ -89,7 +89,8 @@ bio = run_query(
             AND league_id = :league_id
     )
     SELECT dp.player_name, dp.birthdate
-        , COALESCE(ci.school, ''), dp.country
+        , COALESCE(ci.school, '') AS school
+        , dp.country
         , dp.draft_year
 
         , draft_number as draft_pick
