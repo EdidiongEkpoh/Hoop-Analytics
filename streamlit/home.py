@@ -1,5 +1,5 @@
 import streamlit as st
-from db import run_query, available_seasons
+from db import run_query, available_seasons, combined_eligible_players, combined_leaderboard_query
 from ui import conference_badge
 import plotly.graph_objects as go
 import requests
@@ -164,19 +164,14 @@ with scoring_landscape:
     min_mpg = st.slider("Minimum Minutes Per Game", 10, 36, 30)
 
     player_scoring = run_query(
-        '''
-        SELECT dp.player_id, dp.player_name, s.pts_per_game, s.relative_ts_pct
-        FROM staging_marts.fct_player_season_summary s
-        JOIN staging_staging.int_player_eligibility e ON e.player_id = s.player_id
-            AND e.season = s.season
-            AND e.season_type = s.season_type
-            AND e.league_id = s.league_id
-        JOIN staging_marts.dim_players dp ON dp.player_id = s.player_id
-        WHERE s.season = :season
-            AND s.league_id = :league_id
-            AND s.season_type = :season_type
-            AND e.meets_min_games_threshold = TRUE
-            AND s.minutes_per_game >= :min_mpg
+        f'''
+        WITH eligible AS ({combined_eligible_players("Per Game")})
+        SELECT player_id, player_name, pts_scaled AS pts_per_game, relative_ts_pct
+        FROM eligible 
+        WHERE season = :season
+            AND league_id = :league_id
+            AND season_type = :season_type
+            AND minutes_per_game >= :min_mpg
         '''
         , {**params, "min_mpg": min_mpg}
     )
@@ -279,54 +274,22 @@ with tab_leaders:
         </div>
         ''', unsafe_allow_html=True
     )
-    grain = st.radio("Grain", ["Per game", "Per 36", "Per 75"], horizontal=True, label_visibility="collapsed")
+    grain_label = st.radio("Grain", ["Per game", "Per 36", "Per 75", "Per 100"], horizontal=True, label_visibility="collapsed")
+    grain = {"Per game": "Per Game", "Per 36": "Per 36", "Per 75": "Per 75", "Per 100": "Per 100"}[grain_label]
 
-    if grain == "Per 75":
-        stats_table = 'fct_player_stats_per_75'
-        pts_col, reb_col, ast_col, stl_col, blk_col, tov_col = (
-            "pts_per_75", "reb_per_75", "ast_per_75", "stl_per_75", "blk_per_75", 'tov_per_75'
-        )
-    elif grain == "Per 36":
-        stats_table = 'fct_player_stats_per_36'
-        pts_col, reb_col, ast_col, stl_col, blk_col, tov_col = (
-                "pts_per_36", "reb_per_36", "ast_per_36", "stl_per_36", "blk_per_36", 'tov_per_36'
-        )
-    else:   
-        stats_table = 'fct_player_season_summary'
-        pts_col, reb_col, ast_col, stl_col, blk_col, tov_col = (
-                "pts_per_game", "rebs_per_game", "asts_per_game", "stls_per_game", "blks_per_game", 'tovs_per_game'
-            )
+    
+    leaders = run_query(combined_leaderboard_query(grain), params)
+    leaders = leaders.rename(columns={
+        "pts_scaled": "pts", "reb_scaled": "reb", "ast_scaled": "ast",
+        "stl_scaled": "stl", "blk_scaled": "blk", "tov_scaled": "tov"
+    })
+    for col in ["fg3pr", "ftr", "ts_pct", "relative_ts_pct"]:
+        leaders[col] = leaders[col] * 100
 
-    leaders = run_query(
-        f'''
-        SELECT DISTINCT dp.player_name
-            , s.team_name
-            , ROUND(s.{pts_col}, 1) AS pts
-            , ROUND(s.{reb_col}, 1) AS reb
-            , ROUND(s.{ast_col}, 1) AS ast
-            , ROUND(s.{stl_col}, 1) AS stl
-            , ROUND(s.{blk_col}, 1) AS blk
-            , ROUND(s.{tov_col}, 1) AS tov
-            , ROUND(100 * cast(s.fg3pr as NUMERIC), 1) as fg3pr
-            , ROUND(100 * cast(s.ftr as NUMERIC), 1) as ftr
-            , ROUND(100 * cast(s.ts_pct as NUMERIC), 1) as ts_pct
-            , ROUND(100 * cast(s.relative_ts_pct as NUMERIC), 1) as relative_ts_pct
-        FROM staging_marts.{stats_table} s
-        JOIN staging_staging.int_player_eligibility e ON e.player_id = s.player_id
-            AND e.season = s.season
-            AND e.season_type = s.season_type
-            AND e.league_id = s.league_id
-        JOIN staging_marts.dim_players dp ON dp.player_id = s.player_id
-        WHERE s.season = :season
-            AND s.league_id = :league_id
-            AND s.season_type = :season_type
-            AND e.meets_min_games_threshold = TRUE
-        ORDER BY 3 DESC
-        ''',
-        params
-    )
+    leaders = leaders[["player_name", "current_team_name", "pts", "reb", "ast", "stl", "blk", "tov",
+                       "fg3pr", "ftr", "ts_pct", "relative_ts_pct"]]
 
-    st.caption(f"League leaders ({grain.lower()})")
+    st.caption(f"League leaders ({grain_label.lower()})")
     st.dataframe(
         leaders, hide_index=True, use_container_width=True, column_config={
             "player_name": st.column_config.TextColumn("Player"),

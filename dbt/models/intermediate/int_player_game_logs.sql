@@ -26,6 +26,7 @@ SELECT b.game_id
     , b.fg_pct
     , b.fgm - b.fg3m AS fg2m
     , b.fga - b.fg3a AS fg2a
+    
     , b.fg3m 
     , b.fg3a
     , b.fg3_pct

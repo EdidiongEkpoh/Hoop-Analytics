@@ -1,5 +1,5 @@
 import streamlit as st
-from db import run_query, available_seasons
+from db import run_query, available_seasons, combined_player_query
 from ui import inject_css, comparison_row_html
 
 inject_css()
@@ -136,26 +136,9 @@ if mode == "Teams":
     row("Opp FTR%", 'opp_ftr', "{:.1%}")
 
 else:
-    grain = st.radio("Grain", ["Per Game", "Per 36", "Per 75", "Per 100"], horizontal=True)
+    grain_label = st.radio("Grain", ["Per Game", "Per 36", "Per 75", "Per 100"], horizontal=True)
 
-    GRAIN_STATS_TABLE = {
-        "Per Game": "fct_player_season_summary",
-        "Per 36": "fct_player_stats_per_36",
-        "Per 75": "fct_player_stats_per_75",
-        "Per 100": "fct_player_stats_per_100",
-    }
-
-    GRAIN_COLS = {
-        "pts": ("pts_per_game", "pts"), "reb": ("rebs_per_game", "reb"), "ast": ("asts_per_game", "ast"),
-        "stl": ("stls_per_game", "stl"), "blk": ("blks_per_game", "blk"), "tov": ("tovs_per_game", "tov")
-    }
-
-    def grain_col(stat, grain):
-        game_stat, suf = GRAIN_COLS[stat]
-        if grain == "Per Game":
-            return game_stat
-        tag = {"Per 36": "36", "Per 75": "75", "Per 100": "100"}[grain]
-        return f"{suf}_per_{tag}"
+    SCALED_KEYS = {"pts": "pts_scaled", "reb": "reb_scaled", "ast": "ast_scaled", "stl": "stl_scaled", "blk": "blk_scaled", "tov": "tov_scaled"}
 
     col_left, col_right = st.columns(2)
     def player_filters(col, side_key):
@@ -211,37 +194,12 @@ else:
     season_L, type_L, player_id_L, team_id_L, player_name_L = player_filters(col_left, "PL")
     season_R, type_R, player_id_R, team_id_R, player_name_R = player_filters(col_right, "PR")
 
-    def get_player_data(player_id, team_id, season, season_type):
-        stats_table = GRAIN_STATS_TABLE[grain]
-        cols = [grain_col(s, grain) for s in GRAIN_COLS]
-        p = {"player_id": player_id, "team_id": team_id, "season": season, "season_type": season_type}
-
-        grain_stats = run_query(
-            f'''
-            SELECT {", ".join(cols)}
-            FROM staging_marts.{stats_table}
-            WHERE player_id = :player_id
-                AND team_id = :team_id
-                AND season = :season
-                AND season_type = :season_type
-            '''
-            , p
+    def get_player_data(player_id, season, season_type, grain):
+        stats = run_query(
+            combined_player_query(grain),
+            {"player_id": player_id, "season": season, "league_id": "00", "season_type": season_type}
         )
-        grain_stats = grain_stats.iloc[0] if not grain_stats.empty else None
-
-        constants = run_query(
-            '''
-            SELECT games_played, minutes_per_game, fg2_pct, fg3_pct, ft_pct, fg3pr, ftr
-                , ts_pct, relative_ts_pct, oreb_pct, dreb_pct, reb_pct, stl_pct, blk_pct, net_rating, tov_pct, assist_pct
-            FROM staging_marts.fct_player_season_summary
-            WHERE player_id = :player_id
-                AND team_id = :team_id
-                AND season = :season
-                AND season_type = :season_type
-            '''
-            , p
-        )
-        constants = constants.iloc[0] if not constants.empty else None
+        stats = stats.iloc[0] if not stats.empty else None
 
         bio = run_query(
         '''
@@ -249,18 +207,19 @@ else:
             , dp.position
             , dp.height
             , dp.weight
-            , dt.full_name AS team_name
+            , dp.current_team_id
+            , dp.current_team_name
         FROM staging_marts.dim_players dp
-        LEFT JOIN staging_marts.dim_teams dt ON dt.team_id = :team_id
         WHERE dp.player_id = :player_id
         '''
-            , {'player_id': player_id, 'team_id': team_id}
+            , {'player_id': player_id}
         )
         bio = bio.iloc[0] if not bio.empty else None
-        return grain_stats, constants, bio
+        return stats, bio
 
-    grain_stats_L, constants_L, bio_L = get_player_data(player_id_L, team_id_L, season_L, type_L)
-    grain_stats_R, constants_R, bio_R = get_player_data(player_id_R, team_id_R, season_R, type_R)
+    stats_L, bio_L = get_player_data(player_id_L, season_L, type_L, grain_label)
+    stats_R, bio_R = get_player_data(player_id_R, season_R, type_R, grain_label)
+
 
     def player_id_block(player_id, bio, season, season_type):
         if bio is None:
@@ -269,7 +228,7 @@ else:
         <div style="text-align:center;">
             <img src="https://cdn.nba.com/headshots/nba/latest/260x190/{player_id}.png" width="200">
             <div style="font-size:24px; font-weight:700; margin-top:8px;">{bio['player_name']}</div>
-            <div style="font-size:14px; color:#9A9EA6;">{bio['position']} | {bio['team_name']}</div>
+            <div style="font-size:14px; color:#9A9EA6;">{bio['position']} | {bio['current_team_name']}</div>
             <div style="font-size:13px; color:#9A9EA6;">{season} | {season_type}</div>
         </div>
         """
@@ -286,18 +245,18 @@ else:
     st.divider()
 
     def grain_row(label, stat, higher_is_better=True):
-        if grain_stats_L is None or grain_stats_R is None:
+        if stats_L is None or stats_R is None:
             return
-        key = grain_col(stat, grain)
-        l, r = grain_stats_L[key], grain_stats_R[key]
+        key = SCALED_KEYS[stat]
+        l, r = stats_L[key], stats_R[key]
         st.markdown(comparison_row_html(label, l, r, f"{l:.1f}", f"{r:.1f}", higher_is_better), unsafe_allow_html=True)
 
     FMT = {"pct": "{:.1%}", "signed_pct": "{:+.1%}", "signed": "{:+.1f}", "tov": "{:.1f}%", "int": "{:.0f}"}
 
     def const_row(label, key, fmt="pct", higher_is_better=True):
-        if constants_L is None or constants_R is None:
+        if stats_L is None or stats_R is None:
             return 
-        l, r = constants_L[key], constants_R[key]
+        l, r = stats_L[key], stats_R[key]
         
         f = FMT[fmt]
         st.markdown(comparison_row_html(label, l, r, f.format(l), f.format(r), higher_is_better), unsafe_allow_html=True)

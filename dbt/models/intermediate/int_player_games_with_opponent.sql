@@ -1,3 +1,4 @@
+{{ config(materialized='table') }}
 WITH player_games AS (
     SELECT *
     FROM {{ ref('int_player_game_logs') }}
@@ -12,6 +13,7 @@ WITH player_games AS (
     FROM {{ ref('int_team_games_with_opponent') }}
 )
 SELECT pg.*
+    , ROUND(pg.fg2m::NUMERIC / NULLIF(pg.fg2a, 0), 3) AS fg2_pct
     , tc.team_minutes
     , tc.opponent_possessions
     , tc.opponent_fga
