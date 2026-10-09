@@ -2,12 +2,10 @@ version: 2
 
 models:
   - name: dim_teams
-    description: Team identity fields and season standings.
+    description: Team identity fields.
     columns:
       - name: team_id
-        tests:
-          - not_null
-          - unique
+        data_tests: [not_null, unique]
       - name: full_name
         description: Team's city and nickname.
       - name: conference
@@ -20,248 +18,252 @@ models:
     description: Player bio information and most recent team.
     columns:
       - name: player_id
-        tests:
-          - not_null
-          - unique
+        data_tests: [not_null, unique]
       - name: current_team_id
         description: Player's most recent team, if any.
   
+  - name: dim_standings
+    description: Regular season standings.
+    columns:
+      - name: league_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests: [not_null]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [league_id, team_id, season]
+
   - name: fct_team_games
     description: Team boxscores, including opponent's stats.
     columns:
       - name: game_id
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: team_id
-        tests: 
-          - not_null
-    tests:
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id
-              - team_id
+            combination_of_columns: [game_id, team_id]
 
   - name: fct_player_games
     description: Player boxscores.
     columns:
       - name: game_id
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_id
-        tests: 
-          - not_null
-    tests:
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id
-              - player_id 
+            combination_of_columns: [game_id, player_id]
   
-  - name: fct_team_season_summary
-    description: Raw season averages for each team.
+  
+  - name: fct_player_season
+    description: Player season stats.
     columns:
-      - name: team_id
-        tests: 
-          - not_null
-      - name: pts_per_game
-    tests:
+      - name: player_id
+        data_tests: [not_null]
+      - name: position_group
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Guard', 'Forward', 'Center']
+      - name: fg_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: ts_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1.5}
+      - name: tov_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: stl_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: blk_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  - name: fct_player_season_summary
-    description: Raw season averages for each player.
+            combination_of_columns: [player_id, season, league_id, season_type]
+
+  - name: fct_player_season_by_team
+    description: Raw season averages for each team that the player played for in the season.
     columns:
       - name: player_id
         description: Player's unique identifier, duplicates are created for players who played on multiple teams during the season.
 
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
   
-  - name: fct_player_tracking_stats
+  - name: fct_team_season
+    description: Team season per game and 100 stats.
+    columns:
+      - name: team_id
+        data_tests: [not_null]
+      - name: win_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: efg_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: tov_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+      - name: oreb_pct
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, season, league_id, season_type]
+  
+  - name: fct_league_season
+    description: League baseline stats per season/league_season_type from team totals. 
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [season, league_id, season_type]
+
+  - name: fct_player_tracking_stat
     description: Raw total Catch-and-shoot, pull-up, drives, post-ups, and other player tracking stats for each player.
     columns:
       - name: player_id
-        tests:
-          - not_null
-    tests:
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
+
   - name: fct_player_tracking_stats_per_game
     description: Per game Catch-and-shoot, pull-up, drives, post-ups, and other player tracking stats for each player.
     columns:
       - name: player_id
-        tests:
-          - not_null
-    tests:
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
   
-  - name: fct_player_stats_per_36
-    description: Player season stats per 36 minutes.
-    columns:
-      - name: player_id
-        tests: 
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  - name: fct_player_stats_per_75
-    description: Player season stats per 75 possessions.
-    columns:
-      - name: player_id
-        tests: 
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-
-  - name: fct_player_stats_per_100
-    description: Player season stats per 100 possessions.
-    columns:
-      - name: player_id
-        tests: 
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  - name: fct_team_stats_per_100
-    description: Team stats per 100 possessions.
-    columns: 
-      - name: team_id
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-      
   - name: fct_player_tracking_stats_per_36
-    description: Stats per 36 minute player tracking stats relative to the league/season/season_type.
+    description: Player tracking stats per 36 minutes.
     columns:
-      - name: player_id
-        tests:
-          - not_null
-    tests:
+      - name: player_id 
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
   - name: fct_player_tracking_stats_per_75
-    description: Stats per 75 possessions player tracking stats relative to the league/season/season_type.
+    description: Player tracking stats per 75 possessions.
     columns:
-      - name: player_id
-        tests:
-          - not_null
-    tests:
+      - name: player_id 
+        data_tests: [not_null]
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  - name: fct_player_tracking_stats_per_100
-    description: Stats per 100 possessions player tracking stats relative to the league/season/season_type.
-    columns:
-      - name: player_id
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - player_id
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  
-  - name: fct_team_opponent_stats_per_game
-    description: Per game opponent stats for each team.
-    columns:
-      - name: team_id
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - team_id
-              - season
-              - league_id
-              - season_type
-  
-  - name: fct_team_opponent_stats_per_100
-    description: Per 100 opponent stats for each team.
-    columns:
-      - name: team_id
-        tests:
-          - not_null
-    tests:
-      - dbt_utils.unique_combination_of_columns:
-          arguments:
-            combination_of_columns:
-              - team_id
-              - season
-              - league_id
-              - season_type
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
 
+  - name: fct_player_tracking_stats_per_100
+    description: Player tracking stats per 100 possessions.
+    columns:
+      - name: player_id 
+        data_tests: [not_null]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, team_id, season, league_id, season_type]
+  - name: fct_shot_zone_summary
+    description: Player shot zones broken down by general area and compared vs league average.
+    columns:
+      - name: player_id
+        data_tests: [not_null]
+      - name: team_id
+        data_tests: [not_null]
+
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, team_id, season, league_id, season_type, shot_zone_basic, shot_zone_area, shot_zone_range]
+
+
+  - name: fct_shots
+    description: One row per shot attempt.
+    columns:
+      - name: game_id
+        data_tests: [not_null]
+      - name: player_id
+        data_tests: [not_null]
+      - name: shot_made_flag
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: [0, 1]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [game_id, player_id, game_event_id, league_id]
+
+  - name: dim_team_rosters
+    description: Team rosters.
+    columns:
+      - name: team_id
+        data_tests: [not_null]
+      - name: player_id
+        data_tests: [not_null]
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, player_id, season, league_id]
+  
+  - name: fct_player_on_off
+    description: Team ratings and the four factors with player on and off the court as well as differences.
+    columns:
+      - name: on_efg_pct
+        data_tests:  
+          - dbt_utils.accepted_range:
+              arguments: 
+                {min_value: 0, max_value: 1.5}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, player_id, season, league_id, season_type]
+  
+  - name: fct_player_play_types
+    description: Player play type and efficiency per player/season.
+    columns:
+      - name: frequency
+        data_tests:
+          - dbt_utils.accepted_range:
+              arguments: {min_value: 0, max_value: 1}
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, play_type, type_grouping, season, league_id, season_type]
+  
+  - name: fct_player_play_types
+    description: Team play type, efficiency, and ranking by season.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, play_type, type_grouping, season, league_id, season_type]
+  
+  - name: fct_player_defense
+    description: Opponent shooting by category with the player as closest defender. Hustle totals and per-36 rates included, too.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, season, league_id, season_type]

@@ -60,13 +60,10 @@ models:
         description: The round the player was drafted in ("Undrafted" if undrafted).
       - name: draft_number
         description: The number pick the player was drafted at ("Undrafted" if undrafted).
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id
+            combination_of_columns: [season, league_id, player_id]
   - name: stg_player_basic_boxscores
     description: Game logs of basic stats for each player.
     columns: 
@@ -80,8 +77,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_name
         description: Player's full name.
       - name: team_id
@@ -90,17 +86,17 @@ models:
         description: Name of the team that the player's on.
       - name: game_id
         description: ID of the game.
-        tests:
-          - not_null 
+        data_tests: [not_null]
       - name: game_date
         description: Date of the game.
       - name: matchup
         description: Abbreviation of the two teams playing in the game (e.g. GSW @ LAL).
       - name: wl
         description: Player's team won or loss the game.
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['W', 'L']
+              arguments:
+                values: ['W', 'L']
       - name: minutes
         description: The number of minutes the player played in the game in integer format.
       - name: fgm
@@ -141,12 +137,10 @@ models:
         description: The total amount of points the player scored in the game.
       - name: plus_minus
         description: The raw point differential of the player's team while they were on the court in the game.
-    tests: 
+    data_tests: 
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id
-              - player_id
+            combination_of_columns: [game_id, player_id]
 
   - name: stg_player_advanced_boxscores
     description: Game logs of advanced stats for each player.
@@ -159,18 +153,17 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: game_id
         description: Id of the game the player played in.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: team_id
         description: Id of the team the player is on.
+        data_tests: [not_null]
       - name: team_city
         description: City of the team that the player is on.
       - name: team_name
         description: Name of the team the player is on.
       - name: player_id
         description: Id of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: first_name
         description: Player's first name.
       - name: last_name
@@ -207,20 +200,17 @@ models:
         description: Number of possessions the player was involved in per 48 minutes.
       - name: possessions
         description: Raw number of possessions the player was involved in the game.
-    tests: 
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id
-              - player_id
+            combination_of_columns: [game_id, player_id]
 
   - name: stg_teams
     description: All teams.
     columns: 
       - name: id
         description: ID of the team.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: full_name
         description: Team's city and nickname.
       - name: abbreviation
@@ -239,10 +229,7 @@ models:
     columns:
       - name: team_id
         description: ID of the team.
-        tests:
-          - not_null
-      - name: season
-        description: Season that the roster was a part of.
+        data_tests: [not_null]
       - name: league_id_code
         description: ID of the leaue (e.g. '00' is NBA)
       - name: season
@@ -251,8 +238,7 @@ models:
         description: League ID for this extract run (e.g. "00" for NBA).
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]  
       - name: player_name
         description: Player's full name.
       - name: jersey_number
@@ -271,14 +257,10 @@ models:
         description: Player's pre NBA school/academy/club
       - name: how_acquired
         description: Description of how the team originally acquired the player.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - team_id
-              - player_id
-              - season
-              - league_id
+            combination_of_columns: [team_id, player_id, season, league_id]
   
   - name: stg_team_basic_boxscores
     description: Game logs of basic stats for teams.
@@ -299,17 +281,17 @@ models:
         description: Name of the team that played in the game
       - name: game_id
         description: ID of the game.
-        tests:
-          - not_null 
+        data_tests: [not_null]
       - name: game_date
         description: Date of the game.
       - name: matchup
         description: Abbreviation of the two teams playing in the game (e.g. GSW @ LAL).
       - name: wl
         description: Whether the team won or lost the game.
-        tests:
+        data_tests:
           - accepted_values:
-              values: ['W', 'L']
+              arguments:
+                values: ['W', 'L']
       - name: minutes
         description: The number of minutes that was played.
       - name: fgm
@@ -350,12 +332,10 @@ models:
         description: The total amount of points the team scored in the game.
       - name: plus_minus
         description: The team's raw point differential in the game.
-    tests: 
+    data_tests: 
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id 
-              - team_id
+            combination_of_columns: [game_id, team_id]
   
   - name: stg_team_advanced_boxscores
     description: Boxscores of advanced stats for teams.
@@ -368,8 +348,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: game_id
         description: Id of the game the team played in.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: team_id
         description: Id of the team that the stats pertain to
       - name: team_city
@@ -404,12 +383,10 @@ models:
         description: Number of possessions the team was involved in per 48 minutes.
       - name: possessions
         description: Raw number of possessions the team was involved in the game.
-    tests: 
+    data_tests: 
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id 
-              - team_id
+            combination_of_columns: [game_id, team_id]
   
   - name: stg_standings
     description: Season standings.
@@ -426,8 +403,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: team_id
         description: ID of the team.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: team_city
         description: City of the team.
       - name: team_name
@@ -476,13 +452,10 @@ models:
         description: Team's average points allowed per game.
       - name: point_diff_per_game
         description: Team's average point differential per game.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season_id_code
-              - team_id
-  
+            combination_of_columns: [season_id_code, league_id_code, team_id]
   - name: stg_shot_chart_detail
     description: Details on all shots.
     columns:
@@ -494,22 +467,22 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: game_id
         description: ID of the game the shot occured in.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: game_event_id
         description: Sequential event ID, unique per shot event for a given player/game.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_id
         description: ID of the player who took the shot.
-        tests:
-          - not_null 
+        data_tests: [not_null]
       - name: player_name
         description: Name of the player who took the shot.
+        data_tests: [not_null]
       - name: team_id
         description: ID of the shooting player's team.
+        data_tests: [not_null]
       - name: team_name
         description: Name of the shooting player's team.
+        data_tests: [not_null]
       - name: quarter
         description: Quarter the shot was taken in (5+ indicates overtime).
       - name: minutes_remaining
@@ -538,19 +511,16 @@ models:
         description: 1 for every row (all rows are attempts); kept for compatibility with raw API's shape.
       - name: shot_made_flag
         description: 1 if the shot was made, 0 if missed.
-        tests:
+        data_tests:
           - accepted_values:
-              values: [0, 1]
+              arguments:
+                values: [0, 1]
       - name: game_date
         description: Date the game was played.
-    tests: 
+    data_tests: 
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - game_id 
-              - player_id
-              - game_event_id
-              - league_id
+            combination_of_columns: [game_id, player_id, game_event_id, league_id]
   
 
   - name: stg_shot_zone_league_averages
@@ -574,16 +544,10 @@ models:
         description: League-wide total field goal makes from the zone.
       - name: fg_pct
         description: League-wide field goal percentage from this zone.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - season_type
-              - league_id
-              - shot_zone_basic
-              - shot_zone_area
-              - shot_zone_range
+            combination_of_columns: [season, season_type, league_id, shot_zone_basic, shot_zone_area, shot_zone_range]
     
   - name: stg_player_catch_shoot_stats
     description: Player catch and shoot stats.
@@ -596,8 +560,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_name
         description: Name of the player.
       - name: team_id
@@ -622,14 +585,10 @@ models:
         description: Catch and shoot effective field goal percentage.
       - name: catch_shoot_pts
         description: Total points scored on catch and shoot attempts.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id
-              - season_type
+            combination_of_columns: [season, league_id, player_id, season_type]
   
   - name: stg_player_drives_stats
     description: Player drives stats.
@@ -642,8 +601,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_name
         description: Name of the player.
       - name: team_id
@@ -672,14 +630,10 @@ models:
         description: Total turnovers on drives attempts.
       - name: drive_pf
         description: Total personal fouls on drives attempts.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id
-              - season_type
+            combination_of_columns: [season, league_id, player_id, season_type]
   
   - name: stg_player_postup_stats
     description: Player post-up stats.
@@ -692,8 +646,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]  
       - name: player_name
         description: Name of the player.
       - name: team_id
@@ -724,16 +677,12 @@ models:
         description: Total assists on post-up attempts.   
       - name: post_touch_tov
         description: Total turnovers on post-up attempts.
-      - name: post_touch_pf
+      - name: post_touch_fouls
         description: Total personal fouls on post-up attempts.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id 
-              - season_type
+            combination_of_columns: [season, league_id, player_id, season_type]
   
   - name: stg_player_pullup_shooting_stats
     description: Player pull-up shooting stats.
@@ -746,8 +695,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_name
         description: Name of the player.
       - name: team_id
@@ -772,14 +720,10 @@ models:
         description: Effective field goal percentage from pull-up shots.
       - name: pullup_pts
         description: Total points scored on pull-up attempts.
-    tests:
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id 
-              - season_type
+            combination_of_columns: [season, league_id, player_id, season_type]
   
   - name: stg_player_scoring_breakdown
     description: Player scoring breakdown stats (points in the paint and assisted vs unassisted buckets).
@@ -792,8 +736,7 @@ models:
         description: Season type for this extract run ("Regular Season" or "Playoffs").
       - name: player_id
         description: ID of the player.
-        tests:
-          - not_null
+        data_tests: [not_null]
       - name: player_name
         description: Name of the player.
       - name: team_id
@@ -816,11 +759,62 @@ models:
         description: Percentage of unassisted field goal makes.
       - name: pct_ast_fgm
         description: Percentage of assisted field goal makes.
-    tests:  
+    data_tests:
       - dbt_utils.unique_combination_of_columns:
           arguments:
-            combination_of_columns:
-              - season
-              - league_id
-              - player_id 
-              - season_type
+            combination_of_columns: [season, league_id, player_id, season_type]
+    
+  - name: stg_player_play_types
+    description: Synergy play types per player and team
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, team_id, play_type, type_grouping, season, league_id, season_type]
+  
+  - name: stg_team_play_types
+    description: Synergy play types per player 
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, play_type, type_grouping, season, league_id, season_type]
+  
+  - name: stg_player_defense_dashboard
+    description: Opponent shooting with player as closest defender.
+    columns:
+      - name: defense_category
+        data_tests:
+          - accepted_values:
+              arguments:
+                values: ['Overall', '3 Pointers', '2 Pointers', 'Less Than 6Ft', 'Less Than 10Ft', 'Greater Than 15Ft']
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, defense_category, position, season, league_id, season_type]
+
+  - name: stg_player_hustle_stats
+    description: Season hustle stats per player
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [player_id, season, league_id, season_type]
+  
+  - name: stg_team_misc_stats
+    description: Season totals of fast break, off-turnover, second-chance and paint points per team.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, season, league_id, season_type]
+  
+  - name: stg_team_player_on_off
+    description: Team box score stats with each player on and off the court.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, player_id, court_status, season, league_id, season_type]
+  
+  - name: stg_team_player_on_off_opponent
+    description: Opponent box score stats with each player on and off the court.
+    data_tests:
+      - dbt_utils.unique_combination_of_columns:
+          arguments:
+            combination_of_columns: [team_id, player_id, court_status, season, league_id, season_type]

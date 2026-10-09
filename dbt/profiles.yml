@@ -8,5 +8,6 @@ hoop_analytics:
       user: "{{ env_var('NBA_DB_USER') }}"
       password: "{{ env_var('NBA_DB_PASSWORD') }}"
       dbname: "{{ env_var('NBA_DB_NAME') }}" 
+      sslmode: "{{ env_var('NBA_DB_SSLMODE', 'prefer')}}"
       schema: staging
       threads: 4

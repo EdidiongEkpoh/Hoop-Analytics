@@ -95,5 +95,4 @@ hoop-analytics/
 I love basketball and I love data. Two sites that have blended these two concepts beautifully are databallr ([Site](https://databallr.com/) | [Twitter](https://x.com/databallr))
 and Hoopology ([Site](https://hoopologyviz.com/) | [Twitter](https://x.com/Justinpinnix)). I wanted to make a version of my own so that 
 I could fully appreciate the lengths that the two creators ventured to 
-put togehter their sites, and so that I can keep up with the current hoop landscape as the seasons progress. I'll continue to make updates
-to this repo in the hopes of constructing an app half as good as theirs.
+put togehter their sites, and so that I can keep up with the current hoop landscape as the seasons progress. 

@@ -15,13 +15,19 @@ x-airflow-common: &airflow-common
     NBA_DB_NAME: ${NBA_DB_NAME}
     NBA_DB_USER: ${NBA_DB_USER}
     NBA_DB_PASSWORD: ${NBA_DB_PASSWORD}
+    NBA_DB_SSLMODE: ${NBA_DB_SSLMODE:-prefer}
+    NEON_DATABASE_URL: ${NEON_DATABASE_URL}
+    NEON_APP_ROLE: ${NEON_APP_ROLE:-}
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./extract:/opt/airflow/extract
     - ./dbt:/opt/airflow/dbt
+    - ./publish:/opt/airflow/publish
     - airflow-logs:/opt/airflow/logs
   depends_on:
     hoop-analytics-metadata-db:
+      condition: service_healthy
+    hoop-analytics-warehouse-db:
       condition: service_healthy
 
 services:
@@ -39,7 +45,7 @@ services:
       - hoop-analytics-warehouse-data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nba"]
+      test: ["CMD-SHELL", "pg_isready -U ${NBA_DB_USER} -e ${NBA_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -55,7 +61,7 @@ services:
     volumes:
       - hoop-analytics-metadata-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U airflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${AIRFLOW_DB_USER} -d ${AIRFLOW_DB_NAME}"]
       interval: 5s
       timeout: 5s
       retries: 10

@@ -1,0 +1,21 @@
+SELECT CAST("TEAM_ID" AS VARCHAR) AS team_id
+    , CAST("TEAM_ABBREVIATION" AS VARCHAR) AS team_abbreviation
+    , CAST("TEAM_NAME" AS VARCHAR) AS team_name
+    , CAST(_extract_season AS VARCHAR) AS season
+    , CAST(_extract_season_type AS VARCHAR) AS season_type
+    , CAST(_extract_league_id AS VARCHAR) AS league_id
+    , CAST("PLAY_TYPE" AS VARCHAR) AS play_type
+    , LOWER(CAST("TYPE_GROUPING" AS VARCHAR)) AS type_grouping
+    , CAST("GP" AS INTEGER) AS games_played
+    , CAST("POSS" AS NUMERIC) AS possessions
+    , CAST("PTS" AS NUMERIC) AS pts
+    , CAST("FGM" AS NUMERIC) AS fgm
+    , CAST("FGA" AS NUMERIC) AS fga
+    , CAST("POSS_PCT" AS NUMERIC) AS frequency
+    , CAST("PPP" AS NUMERIC) AS ppp
+    , CAST("PERCENTILE" AS NUMERIC) AS percentile
+    , CAST("EFG_PCT" AS NUMERIC) AS efg_pct
+    , CAST("FT_POSS_PCT" AS NUMERIC) AS ft_poss_pct
+    , CAST("TOV_POSS_PCT" AS NUMERIC) AS tov_poss_pct
+    , CAST("SCORE_POSS_PCT" AS NUMERIC) AS score_poss_pct
+FROM {{ source('raw_nba', 'team_play_types')}}

@@ -19,8 +19,8 @@ ariflow/airflow.db
 airflow/airflow.cfg
 airflow/webserver_config.py
 
-extract/checkpoints/*.json
-!extract/checkpoints/.gitkeep
+extract/failures/*.json
+!extract/failures/.gitkeep
 
 hoop_analytics.dump
 

@@ -8,3 +8,4 @@ psycopg2-binary>=2.9
 python-dotenv
 plotly>=7.0.0
 dotenv
+requests

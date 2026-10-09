@@ -3,14 +3,31 @@ import logging
 import os 
 from dotenv import load_dotenv 
 import argparse
+import random
+import sys
 
 from sqlalchemy import create_engine, text, inspect
+from sqlalchemy.engine import URL
 import json 
 from pathlib import Path 
 
 import pandas as pd 
 from nba_api.stats.static import players, teams
-from nba_api.stats.endpoints import leaguegamelog, boxscoreadvancedv3,  commonteamroster, commonplayerinfo, leaguestandingsv3, shotchartdetail, leaguedashptstats, leaguedashplayerstats
+from nba_api.stats.endpoints import (
+    leaguegamelog, 
+    boxscoreadvancedv3,  
+    commonteamroster, 
+    commonplayerinfo, 
+    leaguestandingsv3, 
+    shotchartdetail, 
+    leaguedashptstats, 
+    leaguedashplayerstats,
+    leaguedashptdefend,
+    leaguedashteamstats,
+    leaguehustlestatsplayer,
+    synergyplaytypes,
+    teamplayeronoffdetails
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,377 +46,491 @@ NBA_DB_PORT = os.environ.get('NBA_DB_PORT')
 MAX_RETRIES = 3
 RETRY_BACKOFF_SECONDS = 2
 RATE_LIMIT_SLEEP = 1.0
-CHECKPOINT_EVERY_N_GAMES = 100
-CHECKPOINT_EVERY_N_PLAYERS = 50
+API_TIMEOUT = 60
+GAMES_PER_BATCH = 100
+PLAYERS_PER_BATCH = 50
 
-CHECKPOINT_DIR = Path(__file__).parent.parent / 'extract' / 'checkpoints'
+FAILURE_DIR = Path(__file__).parent.parent / 'extract' / 'failures'
 
-SEASON_LEVEL_TABLES = [
-    "raw.player_info", "raw.player_basic_boxscores", 
-    "raw.team_rosters", "raw.team_basic_boxscores", 
-    "raw.standings", "raw.shot_chart_detail", "raw.shot_zone_league_averages",
-    "raw.player_catch_shoot_stats", "raw.player_drives_stats", "raw.player_pullup_shooting_stats",
-    "raw.player_postup_stats", "raw.player_scoring_breakdown", "raw.player_advanced_boxscores", "raw.team_advanced_boxscores"
+PLAYER_ADV_TABLE = 'raw.player_advanced_boxscores'
+TEAM_ADV_TABLE = 'raw.team_advanced_boxscores'
+PLAYER_INFO_TABLE = 'raw.player_info'
+ROSTER_TABLE = 'raw.team_rosters'
+SHOTS_TABLE = 'raw.shot_chart_detail'
+SHOT_LEAGUE_AVG_TABLE = 'raw.shot_zone_league_averages'
+
+GAME_ID_COL = "gameId"
+PLAYER_INFO_ID_COL = "PERSON_ID"
+ROSTER_TEAM_COL = "TeamID"
+SHOT_TEAM_COL = "TEAM_ID"
+
+OMIT_SEASON_TYPE = ["player_info", "team_rosters"]
+
+STANDINGS_BUBBLE_COLS = ["ReturnToPlay_East_PI_Flag", "ReturnToPlay_West_PI_Flag", "ReturnToPlay_Already_Eliminated"]
+
+PULL_KEY_COL = "_pull_key"
+
+PLAY_TYPES = [
+    'Transition', 'Isolation', 'PRBallHandler', 'PRRollman', 'Postup', 'Spotup', 'Handoff', 'Cut', 'OffScreen', 'OffRebound', 'Misc'
 ]
+PLAY_TYPE_GROUPINGS = ['offensive', 'defensive']
+
+DEFENSE_CATEGORIES = [
+    'Overall', '3 Pointers', '2 Pointers', 'Less Than 6Ft', 'Less Than 10Ft', 'Greater Than 15Ft'
+]
+PT_DEFEND_ID_COLS = [
+    "CLOSE_DEF_PERSON_ID", "PLAYER_NAME", "PLAYER_LAST_TEAM_ID", "PLAYER_LAST_TEAM_ABBREVIATION", "PLAYER_POSITION", "AGE", 
+    "GP", "G", "FREQ"
+]
+PT_DEFEND_STAT_COLS = [
+    "D_FGM", "D_FGA", "D_FG_PCT", "NORMAL_FG_PCT", "PCT_PLUSMINUS"
+]
+
+ON_OFF_PULLS = {
+    "Base": ('team_player_on_off', 'raw.team_player_on_off'),
+    "Opponent": ("team_play er_on_off_opponent", 'raw.team_player_on_off_opponent')
+}
 LEAGUE_TYPE = {"00": "NBA", "10": "WNBA", "20": "G League"}
+
+
 def fetch_with_retry(fetch_fn, *args, max_retries=MAX_RETRIES, **kwargs):
     for attempt in range(1, max_retries+1):
         try:
             return fetch_fn(*args, **kwargs)
         except Exception as e:
-            logging.warning(f"attempt {attempt} failed: {e}.")
+            logging.warning(f"Attempt {attempt}/{max_retries} failed: {e}.")
             if attempt == max_retries:
                 raise 
-            time.sleep(RETRY_BACKOFF_SECONDS * attempt)
+            time.sleep(RETRY_BACKOFF_SECONDS * 2 ** (attempt-1) + random.uniform(0, 1))
 
-def get_checkpoint_paths(season, league_id, season_type):
-    tag = f"{season}_{league_id}_{season_type.replace(' ', '')}"
-    return {
-        "processed_games": CHECKPOINT_DIR / f"processed_games_{tag}.json",
-        "failed_games": CHECKPOINT_DIR / f"failed_games_{tag}.json",
-        "processed_players": CHECKPOINT_DIR / f"processed_players_{tag}.json",
-        "failed_players": CHECKPOINT_DIR / f"failed_players_{tag}.json",
-        "failed_teams": CHECKPOINT_DIR / f"failed_teams_{tag}.json",
-        "failed_shot_teams": CHECKPOINT_DIR / f"failed_shot_teams_{tag}.json"
-    }
+def native(values):
+    return [v.item() if hasattr(v, "item") else v for v in values]
 
-def clear_season_level(season, league_id, season_type, engine, incremental=False):
-    tables_to_clear = SEASON_LEVEL_TABLES
-    if incremental:
-        skip = ["raw.player_advanced_boxscores", "raw.team_advanced_boxscores"]
-        tables_to_clear = [t for t in SEASON_LEVEL_TABLES if t not in skip]
-    inspector = inspect(engine)
-    with engine.begin() as conn:
-        for table_name in tables_to_clear:
-            schema, table = table_name.split('.')
-            if not inspector.has_table(table, schema=schema):
-                logging.info(f"Skipping clear for {table_name}.")
-            elif table_name in ["raw.player_info", "raw.team_rosters"]:
-                conn.execute(
-                    text(f"""
-                        DELETE FROM {schema}.{table}
-                        WHERE _extract_season = :season
-                            AND _extract_league_id = :league
-                    """), {"season": season, "league": league_id}
-                )
-                logging.info(f"Cleared existing rows for {season}/{LEAGUE_TYPE[league_id]} from {table_name}.")
-            else:
-                conn.execute(
-                    text(f"""
-                        DELETE FROM {schema}.{table}
-                        WHERE _extract_season = :season
-                            AND _extract_league_id = :league
-                            AND _extract_season_type = :stype
-                        """),
-                        {"season": season, "league": league_id, "stype": season_type}
-                )
-                logging.info(f"Cleared existing rows for {season}/{LEAGUE_TYPE[league_id]}/{season_type} from {table_name}.")
+def stamp_run_metadata(df, season, league_id, season_type, pull_name=""):
+    '''
+    Adds _extract_* columns
+    '''
+    df = df.copy()
+    if pull_name == 'team_standings':
+        df = df.loc[:, ~df.columns.str.startswith('Seeding_Game')]
 
-    logging.info(f"Finished clearing data for {season}/{LEAGUE_TYPE[league_id]}/{season_type}.")
+    df['_extract_season'] = season
+    df['_extract_league_id'] = league_id
+    if pull_name not in OMIT_SEASON_TYPE:
+        df['_extract_season_type'] = season_type 
 
-def load_to_postgres(df, table_name, engine, if_exists="append"):
+    return df
+def scope_for(season, league_id, season_type, pull_name=""):
+    scope = {"_extract_season": season, "_extract_league_id": league_id}
+    if pull_name not in OMIT_SEASON_TYPE:
+        scope['_extract_season_type'] = season_type
+    return scope
+
+def where_clause(scope):
+    return " AND ".join(f'"{col}" = :{col}' for col in scope)
+
+def replace_rows(conn, df, table_name, scope, key_col=None, keys=None):
+    '''
+    Deletes the slice of given table matching the scope, then inserts df.
+    '''
     schema, table = table_name.split('.')
-    if if_exists == "replace":
-        inspector = inspect(engine)
-        if inspector.has_table(table, schema=schema):
-            with engine.begin() as conn:
-                conn.execute(text(f'TRUNCATE TABLE {schema}.{table}'))
-        df.to_sql(table, schema=schema, con=engine, if_exists="append", index=False)
-    else:
-        df.to_sql(table, schema=schema, con=engine, if_exists=if_exists, index=False) 
+    deleted = 0
+    if inspect(conn).has_table(table, schema=schema):
+        where = where_clause(scope)
+        params = dict(scope)
+        if key_col is not None:
+            where += f' AND "{key_col}" = ANY(:keys)'
+            params["keys"] = native(keys)
+        deleted = conn.execute(text(f"DELETE FROM {table_name} WHERE {where}"), params).rowcount
+    if not df.empty:
+        df.to_sql(table, schema=schema, con=conn, if_exists="append", index=False)
+    logger.info(f"{table_name}: replaced {deleted} rows with {len(df)}.")
 
-    logging.info(f"Loaded {len(df)} rows into {table_name}.")
+def loaded_keys(engine, table_name, key_col, scope):
+    '''
+    Distinct key values that are already present in this run's slice of table name.
+    '''
+    schema, table = table_name.split(".")
+    if not inspect(engine).has_table(table, schema=schema):
+        return set()
+
+    sql = f'SELECT DISTINCT "key{key_col}" FROM {table_name} WHERE {where_clause(scope)}'
+    with engine.connect() as conn:
+        return {row[0] for row in conn.execute(text(sql), scope)}
+
+def write_failures(kind, ids, season, league_id, season_type):
+    tag = f"{season}_{league_id}_{season_type.replace(' ', '')}"
+    path = FAILURE_DIR / f"failed_{kind}_{tag}.json"
+    if ids:
+        path.write_text(json.dumps(native(ids)))
+    elif path.exists():
+        path.unlink()
+
+def load_static_tables(engine):
+    '''
+    Loads raw.players and raw.teams
+    '''
+    for fetch, table_name in [(players.get_players, 'raw.players'), (teams.get_teams, 'raw.teams')]:
+        df = pd.DataFrame(fetch())
+        schema, table = table_name.split(".")
+        with engine.begin() as conn:
+            if inspect(conn).has_table(table, schema=schema):
+                conn.execute(text(f"TRUNCATE TABLE {table_name}"))
+            df.to_sql(table, schema=schema, con=conn, if_exists="append", index=False)
+        logger.info(f"{table_name}: loaded {len(df)} rows.")
 
 def get_bulk_pulls(season, league_id, season_type):
+    def game_log(kind):
+        return lambda: leaguegamelog.LeagueGameLog(
+            season=season, league_id=league_id, season_type_all_star=season_type,
+            player_or_team_abbreviation=kind, timeout=API_TIMEOUT
+        ).get_data_frames()[0]
+
+    def tracking(measure):
+        return lambda: leaguedashptstats.LeagueDashPtStats(
+            league_id_nullable=league_id, season=season, season_type_all_star=season_type,
+            pt_measure_type=measure, player_or_team="Player", timeout=API_TIMEOUT
+        ).get_data_frames()[0]
+
     pulls = [
-        {
-            "name": "all_players",
-            "fetch_fn": lambda: pd.DataFrame(players.get_players()),
-            "table": "raw.players",
-            "static": True
-        },
-        {
-            "name": "all_teams",
-            "fetch_fn": lambda: pd.DataFrame(teams.get_teams()),
-            "table": "raw.teams",
-            "static": True
-        },
-        {
-            "name": "player_basic_boxscores",
-            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
-                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="P"
-            ).get_data_frames()[0],
-            "table": "raw.player_basic_boxscores"
-        },
-        {
-            "name": "team_basic_boxscores",
-            "fetch_fn": lambda: leaguegamelog.LeagueGameLog(
-                season=season, league_id=league_id, season_type_all_star=season_type, player_or_team_abbreviation="T"
-            ).get_data_frames()[0],
-            "table": "raw.team_basic_boxscores"
-        },
-        {
-            "name": "catch_shoot_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="CatchShoot",
-                player_or_team = 'Player'
-            ).get_data_frames()[0],
-            "table": "raw.player_catch_shoot_stats"
-        },
-        {
-            "name": "drives_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="Drives",
-                player_or_team = 'Player'
-        ).get_data_frames()[0],
-            "table": "raw.player_drives_stats"
-        },
-        {
-            "name": "pullup_shooting_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PullUpShot",
-                player_or_team = 'Player'   
-            ).get_data_frames()[0],
-            "table": "raw.player_pullup_shooting_stats"
-        },
-        {
-            "name": "postup_stats",
-            "fetch_fn": lambda: leaguedashptstats.LeagueDashPtStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, pt_measure_type="PostTouch",
-                player_or_team = 'Player'
-            ).get_data_frames()[0],
-            "table": "raw.player_postup_stats"
-        },
+        {"name": "player_basic_boxscores", "fetch_fn": game_log("P"), "table": "raw.player_basic_boxscores"},
+        {"name": "team_basic_boxscores", "fetch_fn": game_log("T"), "table": "raw.team_basic_boxscores"},
+        {"name": "catch_shoot_stats", "fetch_fn": tracking("CatchShoot"), "table": "raw.player_catch_shoot_stats"},
+        {"name": "drives_stats", "fetch_fn": tracking("Drives"), "table": "raw.player_drives_stats"},
+        {"name": "pullup_shooting_stats", "fetch_fn": tracking("PullUpShot"), "table": "raw.player_pullup_shooting_stats"},
+        {"name": "postup_stats", "fetch_fn": tracking("PostTouch"), "table": "raw.player_postup_stats"},
         {
             "name": "scoring_breakdown",
             "fetch_fn": lambda: leaguedashplayerstats.LeagueDashPlayerStats(
-                league_id_nullable=league_id, season=season, season_type_all_star=season_type, measure_type_detailed_defense="Scoring"
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type,
+                measure_type_detailed_defense="Scoring", timeout=API_TIMEOUT
             ).get_data_frames()[0],
             "table": "raw.player_scoring_breakdown"
+        },
+        {
+            "name": "player_hustle_stats",
+            "fetch_fn": lambda: leaguehustlestatsplayer.LeagueHustleStatsPlayer(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, timeout=API_TIMEOUT,
+                per_mode_time="Totals"
+            ).get_data_frames()[0],
+            "table": "raw.player_hustle_stats"
+        },
+        {
+            "name": "team_misc_stats",
+            "fetch_fn": lambda: leaguedashteamstats.LeagueDashTeamStats(
+                league_id_nullable=league_id, season=season, season_type_all_star=season_type, 
+                measure_type_detailed_defense="Misc", per_mode_detailed="Totals",timeout=API_TIMEOUT
+            ).get_data_frames()[0],
+            "table": "raw.team_misc_stats"
         }
     ]
 
-    if season == '2019-20' and season_type == 'Regular Season':
-        exclude_cols = ['ReturnToPlay_East_PI_Flag', 'ReturnToPlay_West_PI_Flag', 'ReturnToPlay_Already_Eliminated']
+    if season_type == "Regular Season":
         pulls.append({
             "name": "team_standings",
             "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
-                league_id=league_id, season=season, season_type=season_type
-            ).get_data_frames()[0].drop(columns=exclude_cols),
+                league_id=league_id, season=season, season_type=season_type, timeout=API_TIMEOUT
+            ).get_data_frames()[0].drop(columns=STANDINGS_BUBBLE_COLS, errors="ignore"),
             "table": "raw.standings"
         })
-    elif season != '2019-20' and season_type == "Regular Season":   
-        pulls.append({
-            "name": "team_standings",
-            "fetch_fn": lambda: leaguestandingsv3.LeagueStandingsV3(
-                season=season, season_type=season_type,
-                league_id=league_id, 
-            ).get_data_frames()[0],
-            "table": "raw.standings"
-        })
-    
     return pulls
 
-def get_advanced_boxscores():
-    return {
-        "name": "advanced_boxscores",
-        "fetch_fn": lambda game_id: boxscoreadvancedv3.BoxScoreAdvancedV3(game_id=game_id),
-        "player_table": "raw.player_advanced_boxscores",
-        "team_table": "raw.team_advanced_boxscores"
-    }
-
-def get_player_info():
-    return {
-        "fetch_fn": lambda player_id, league_id: commonplayerinfo.CommonPlayerInfo(
-            league_id_nullable=league_id, player_id=player_id
-        ).get_data_frames()[0],
-        "table": "raw.player_info"
-    }
-
-def get_team_rosters(season, league_id):
-    return {
-        "fetch_fn": lambda team_id: commonteamroster.CommonTeamRoster(
-            team_id=team_id, season=season, league_id_nullable=league_id
-        ).get_data_frames()[0],
-        "table": "raw.team_rosters"
-    }
-
-def get_shot_charts(season, season_type):
-    return {
-        "fetch_fn": lambda team_id: shotchartdetail.ShotChartDetail(
-            team_id=team_id, player_id=0, context_measure_simple='FGA',
-            season_nullable=season, season_type_all_star=season_type
-        ).get_data_frames(),
-        "shots_table": "raw.shot_chart_detail",
-        "league_avg_table": "raw.shot_zone_league_averages"
-    }
-
-def checkpoint(rows_dict, ids, pull_config, processed_path, failed_path, season, league_id, season_type, engine):
-    for key, table in pull_config.items():
-        if rows_dict.get(key):
-            batch_df = pd.concat(rows_dict[key], ignore_index=True)
-            if key == 'player_info':
-                batch_df = stamp_run_metadata(batch_df, season, league_id, season_type, key)
-            else:
-                batch_df = stamp_run_metadata(batch_df, season, league_id, season_type)
-            load_to_postgres(batch_df, table, engine)
-    with open(processed_path, 'w') as f:
-        json.dump(ids['processed'], f)
-    with open(failed_path, 'w') as f:
-        json.dump(ids['failed'], f)
-    logging.info(f"Checkpoint: {len(ids['processed'])} recorded, {len(ids['failed'])} failed.")
-    return {k: [] for k in rows_dict}
-
-def game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=False):
-    games = get_advanced_boxscores()
-    
-    
-    previously_processed = []
-    if incremental and checkpoint_paths['processed_games'].exists():
-        with open(checkpoint_paths['processed_games']) as f:
-            previously_processed = json.load(f)
-
-    game_ids_to_get = [g for g in game_ids if g not in previously_processed]
-    logging.info(f"{len(previously_processed)} games have previously been processed; {len(game_ids_to_get)} games still to retrieve.")
-    games_dict = {'player_advanced_games': [], 'team_advanced_games': []}
-    id_dict = {"processed": list(previously_processed), "failed": []}
-
-
-
-    for i, game_id in enumerate(game_ids_to_get):
+def run_bulk_pulls(season, league_id, season_type, engine):
+    results, problems = {}, []
+    for pull in get_bulk_pulls(season, league_id, season_type):
+        name, table_name = pull['name'], pull['table']
+        results[name] = None
+        logger.info(f"Fetching {name}...")
         try:
-            boxscore = fetch_with_retry(games['fetch_fn'], game_id)
-            games_dict['player_advanced_games'].append(boxscore.player_stats.get_data_frame())
-            games_dict['team_advanced_games'].append(boxscore.team_stats.get_data_frame())
-            id_dict['processed'].append(game_id)
+            df = fetch_with_retry(pull['fetch_fn'])
         except Exception as e:
-            logging.warning(f"Error fetching game_id {game_id}: {e}.")
-            if game_id not in id_dict['failed']:
-                id_dict['failed'].append(game_id)
+            logger.error(f"{name}: fetch failed, existing rows in {table_name} left untouched. {e}")
+            problems.append(f"bulk pull {name} (fetch)")
+            continue
+        df = stamp_run_metadata(df, season, league_id, season_type, name)
+        try:
+            with engine.begin() as conn:
+                replace_rows(conn, df, table_name, scope_for(season, league_id, season_type, name))
+        except Exception as e:
+            logger.error(f"{name}: Load failed and was rolled back. {e}")
+            problems.append(f"bulk pull {name} (load)")
+            continue 
+        results[name] = df 
 
+    return results, problems 
+
+def game_level_extract(game_ids, season, league_id, season_type, engine, incremental=False):
+    scope = scope_for(season, league_id, season_type)
+
+    if incremental:
+        done = (loaded_keys(engine, PLAYER_ADV_TABLE, GAME_ID_COL, scope) & 
+                loaded_keys(engine, TEAM_ADV_TABLE, GAME_ID_COL, scope))
+        to_get = [g for g in game_ids if g not in done]
+        logger.info(f"{len(done)} games already loaded; {len(to_get)} to fetch.")
+    else:
+        to_get = list(game_ids)
+        logger.info(f"Full refresh: fetching {len(to_get)} games.")
+
+    batch = {'ids': [], 'player': [], 'team': []}
+    failed = []
+
+    def flush():
+        if not batch['ids']:
+            return
+        player_df = stamp_run_metadata(pd.concat(batch['player'], ignore_index=True), season, league_id, season_type)
+        team_df = stamp_run_metadata(pd.concat(batch['team'], ignore_index=True), season, league_id, season_type)
+
+        with engine.begin() as conn:
+            replace_rows(conn, player_df, PLAYER_ADV_TABLE, scope, GAME_ID_COL, batch['ids'])
+            replace_rows(conn, team_df, TEAM_ADV_TABLE, scope, GAME_ID_COL, batch['ids'])
+ 
+        logger.info(f"{len(batch['ids'])} games loaded.")
+        for items in batch.values():
+            items.clear()
+
+    for game_id in to_get:
+        try:
+            box = fetch_with_retry(boxscoreadvancedv3.BoxScoreAdvancedV3, game_id=game_id, timeout=API_TIMEOUT)
+            player_df = box.player_stats.get_data_frame()
+            team_df = box.team_stats.get_data_frame()
+        except Exception as e:
+            logger.warning(f"Game {game_id} failed: {e}")
+            failed.append(game_id)
+        else:
+            batch['ids'].append(game_id)
+            batch['player'].append(player_df)
+            batch['team'].append(team_df)
         time.sleep(RATE_LIMIT_SLEEP)
 
-        if i % CHECKPOINT_EVERY_N_GAMES == 0 and i > 0:
-            games_dict = checkpoint(
-                games_dict, id_dict,
-                pull_config={'player_advanced_games': games['player_table'],
-                             'team_advanced_games': games['team_table']},
-                processed_path=checkpoint_paths['processed_games'],
-                failed_path=checkpoint_paths['failed_games'],
-                season=season, league_id=league_id, season_type=season_type, engine=engine
-            )    
+        if len(batch['ids']) >= GAMES_PER_BATCH:
+            flush()
+    flush()
 
-    logging.info("Last game checkpoint...")
-    checkpoint(
-                games_dict, id_dict, 
-                pull_config={'player_advanced_games': games['player_table'],
-                             'team_advanced_games': games['team_table']},
-                processed_path=checkpoint_paths['processed_games'],
-                failed_path=checkpoint_paths['failed_games'],
-                season=season, league_id=league_id, season_type=season_type, engine=engine
-            )    
+    write_failures('games', failed, season, league_id, season_type)
+    logger.info(f"Game-level extract: {len(to_get) - len(failed)} succeeded, {len(failed)} failed.")
+    return [f'{len(failed)} games failed'] if failed else []
 
-def team_dimension_extract(season, league_id, season_type, engine):
-    roster_pull = get_team_rosters(season, league_id)
-    team_ids = [t['id'] for t in teams.get_teams()]
-    rosters = []
-    failed_teams = []
 
+def team_dimension_extract(team_ids, season, league_id, season_type, engine):
+    dfs, succeeded, failed = [], [], []
     for team_id in team_ids:
         try:
-            df = fetch_with_retry(roster_pull['fetch_fn'], team_id)
-            rosters.append(df)
+            df = fetch_with_retry(
+                commonteamroster.CommonTeamRoster,
+                team_id=team_id, season=season, league_id_nullable=league_id, timeout=API_TIMEOUT
+            ).get_data_frames()[0]
+            dfs.append(df)
+            succeeded.append(team_id)
         except Exception as e:
-            logging.warning(f"Failed roster for team {team_id}: {e}.")
-            failed_teams.append(team_id)
-
+            logger.warning(f"Roster for team {team_id} failed: {e}.")
+            failed.append(team_id)
         time.sleep(RATE_LIMIT_SLEEP)
-
-    if rosters:
-        roster_df = pd.concat(rosters, ignore_index=True)
-        roster_df = stamp_run_metadata(roster_df, season, league_id, season_type, 'team_rosters')
-        load_to_postgres(roster_df, roster_pull['table'], engine)
-    if failed_teams:
-        paths = get_checkpoint_paths(season, league_id, season_type)
-        with open(paths['failed_teams'], 'w') as f:
-            json.dump(failed_teams, f)
-
-    logging.info(f"Team dimension extract: {len(rosters)} succeeded, {len(failed_teams)} failed.")
-
-def player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=False):
-    player_info_pull = get_player_info()
-    previously_processed = []
-    if incremental and checkpoint_paths['processed_players'].exists():
-        with open(checkpoint_paths['processed_players']) as f:
-            previously_processed = json.load(f)
     
-    player_ids_to_get = [p for p in player_ids if p not in previously_processed]
-    logging.info(f"{len(previously_processed)} players have previously been processed; {len(player_ids_to_get)} players still to retrieve.")
-    info_dict = {'player_info': []}
-    id_dict = {'processed': list(previously_processed), 'failed': []}
-    for i, player_id in enumerate(player_ids_to_get):
+    if succeeded:
+        roster_df = stamp_run_metadata(pd.concat(dfs, ignore_index=True), season, league_id, season_type, 'team_rosters')
+        with engine.begin() as conn:
+            replace_rows(conn, roster_df, ROSTER_TABLE, scope_for(season, league_id, season_type, "team_rosters"), ROSTER_TEAM_COL, succeeded)
+
+    write_failures("teams", failed, season, league_id, season_type)
+    logger.info(f"Team dimension extract: {len(succeeded)} succeeded, {len(failed)} failed.")
+    return [f"{len(failed)} rosters failed"] if failed else []
+
+def player_dimension_extract(player_ids, season, league_id, season_type, engine):
+    '''
+    Refreshes player_info for the players in this run's game log.
+    '''
+    scope = scope_for(season, league_id, season_type, "player_info")
+    batch_ids, dfs, failed = [], [], []
+
+    def flush():
+        if not batch_ids:
+            return
+        df = stamp_run_metadata(pd.concat(dfs, ignore_index=True), season, league_id, season_type, 'player_info')
+        with engine.begin() as conn:
+            replace_rows(conn, df, PLAYER_INFO_TABLE, scope, PLAYER_INFO_ID_COL, batch_ids)
+        batch_ids.clear()
+        dfs.clear()
+
+    for player_id in player_ids:
         try:
-            df = fetch_with_retry(player_info_pull['fetch_fn'], player_id, league_id)
-            info_dict['player_info'].append(df)
-            id_dict['processed'].append(player_id.item())
+            df = fetch_with_retry(
+                commonplayerinfo.CommonPlayerInfo,
+                player_id=player_id,league_id_nullable=league_id, timeout=API_TIMEOUT
+            ).get_data_frames()[0]
+            dfs.append(df)
+            batch_ids.append(player_id)
         except Exception as e:
-            logging.warning(f"Failed to extract player info for {player_id}: {e}.")
-            id_dict['failed'].append(player_id.item())
-
+            logger.warning(f"Player info for {player_id} failed: {e}")
+            failed.append(player_id)
         time.sleep(RATE_LIMIT_SLEEP)
+        if len(batch_ids) >= PLAYERS_PER_BATCH:
+            flush()
+    flush()
 
-        if i % CHECKPOINT_EVERY_N_PLAYERS == 0 and i > 0:
-            info_dict = checkpoint(
-                info_dict, id_dict, 
-                pull_config={'player_info': player_info_pull['table']},
-                processed_path=checkpoint_paths['processed_players'],
-                failed_path=checkpoint_paths['failed_players'],
-                season=season, league_id=league_id, season_type=season_type, engine=engine
+    write_failures("players", failed, season, league_id, season_type)
+    logger.info(f"Player dimension extract: {len(player_ids) - len(failed)} succeeed, {len(failed)} failed.")
+    return [f"{len(failed)} players failed"] if failed else []
+
+
+def shot_chart_extract(team_ids, season, league_id, season_type, engine):
+    dfs, succeeded, failed = [], [], []
+    league_avg_df = None
+    for team_id in team_ids:
+        try:
+            shot_dfs = fetch_with_retry(
+                shotchartdetail.ShotChartDetail,
+                team_id=team_id, player_id=0, context_measure_simple='FGA', league_id=league_id,
+                season_nullable=season, season_type_all_star=season_type, timeout=API_TIMEOUT
+            ).get_data_frames()
+            dfs.append(shot_dfs[0])
+            succeeded.append(team_id)
+            if league_avg_df is None:
+                league_avg_df = shot_dfs[1]
+        except Exception as e:
+            logger.warning(f"Shot chart for team {team_id} failed: {e}")
+            failed.append(team_id)
+        time.sleep(RATE_LIMIT_SLEEP)
+    
+    scope = scope_for(season, league_id, season_type)
+    with engine.begin() as conn:
+        if succeeded:
+            shots_df = stamp_run_metadata(pd.concat(dfs, ignore_index=True), season, league_id, season_type)
+            replace_rows(conn, shots_df, SHOTS_TABLE, scope, SHOT_TEAM_COL, succeeded)
+        if league_avg_df is not None:
+            league_avg_df = stamp_run_metadata(league_avg_df, season, league_id, season_type)
+            replace_rows(conn, league_avg_df, SHOT_LEAGUE_AVG_TABLE, scope)
+    
+    write_failures("shot_teams", failed, season, league_id, season_type)
+    logger.info(f"Shot chart extract: {len(succeeded)} succeeded, {len(failed)} failed.")
+    return [f"{len(failed)} shot charts failed"] if failed else []
+
+def run_keyed_pull(name, table_name, calls, season, league_id, season_type, engine):
+    '''
+    Runs several API calls into one raw table. calls is a list of (key, fetch_fn).
+    Each call's rows are tagged with its key in _pull_key and replaced with their own.
+    '''
+    dfs, succeeded, failed = [], [], []
+    for key, fetch_fn in calls:
+        try:
+            df = fetch_with_retry(fetch_fn)
+        except Exception as e:
+            logger.warning(f"{name} [{key}] failed: {e}")
+            failed.append(key)
+        else:
+            dfs.append(df.assign(**{PULL_KEY_COL: key}))
+            succeeded.append(key)
+        time.sleep(RATE_LIMIT_SLEEP)
+    
+    problems = []
+    if succeeded:
+        df = stamp_run_metadata(pd.concat(dfs, ignore_index=True), season, league_id, season_type, name)
+        try:
+            with engine.begin() as conn:
+                replace_rows(conn, df, table_name, scope_for(season, league_id, season_type, name), PULL_KEY_COL, succeeded)
+        except Exception as e:
+            logger.error(f"{name}: Load failed and was rolled back. {e}")
+            problems.append(f"{name} (load)")
+    
+    write_failures(name, failed, season, league_id, season_type)
+    logger.info(f"{name}: {len(succeeded)} succeeded, {len(failed)} failed.")
+    if failed:
+        problems.append(f"{name}: {len(failed)} of {len(calls)} failed.")
+    return problems
+
+def play_type_extract(season, league_id, season_type, engine):
+    '''
+    Synergy play types for players and teams for offense and defense.
+    '''
+    problems = []
+    for abbreviation, name, table_name in [
+        ('P', 'player_play_types', 'raw.player_play_types'),
+        ('T', 'team_play_types', 'raw.team_play_types')
+    ]:
+        calls = [
+            (
+            f"{play_type}|{grouping}",
+            lambda pt=play_type, g=grouping, a=abbreviation: synergyplaytypes.SynergyPlayTypes(
+                league_id=league_id, season=season, season_type_all_star=season_type,
+                player_or_team_abbreviation=a, per_mode_simple="Totals", play_type_nullable=pt, type_grouping_nullable=g, timeout=API_TIMEOUT
+            ).get_data_frames()[0]
             )
+            for play_type in PLAY_TYPES
+            for grouping in PLAY_TYPE_GROUPINGS
+        ]
+        problems += run_keyed_pull(name, table_name, calls, season, league_id, season_type, engine)
+    return problems
 
+def normalize_pt_defend(df, category):
+    '''
+    Renames a LeagueDashPtDefend category's stat columns to the inputted name.
+    '''
+    expected_width = len(PT_DEFEND_ID_COLS) + len(PT_DEFEND_STAT_COLS)
+    if list(df.columns[:len(PT_DEFEND_ID_COLS)]) != PT_DEFEND_ID_COLS or len(df.columns) != expected_width:
+        raise ValueError(f"Unexpected LeagueDashPtDefend columns for '{category}': {list(df.columns)}")
+    df = df.copy()
+    df.columns = PT_DEFEND_ID_COLS + PT_DEFEND_STAT_COLS
+    return df
 
-    logging.info("Last player checkpoint...")
-    checkpoint(
-        info_dict, id_dict, 
-        pull_config={'player_info': player_info_pull['table']},
-        processed_path=checkpoint_paths['processed_players'],
-        failed_path=checkpoint_paths['failed_players'],
-        season=season, league_id=league_id, season_type=season_type, engine=engine
+def defense_dashboard_extract(season, league_id, season_type, engine):
+    '''
+    Opponent shooting with each player as the closest defender, overall, and by shot distance.
+    '''
+    calls = [
+        (
+            category,
+            lambda c=category: normalize_pt_defend(
+                leaguedashptdefend.LeagueDashPtDefend(
+                    league_id=league_id, season=season, season_type_all_star=season_type,
+                    defense_category=c, per_mode_simple="Totals", timeout=API_TIMEOUT
+                ).get_data_frames()[0],
+                c
+            )
+        )
+        for category in DEFENSE_CATEGORIES
+    ]
+    return run_keyed_pull("player_defense_dashboard", "raw.player_defense_dashboard", calls, season, league_id, season_type, engine)
+
+def fetch_on_off(team_id, measure, season, league_id, season_type):
+    endpoint = teamplayeronoffdetails.TeamPlayerOnOffDetails(
+        team_id=team_id, season=season, season_type_all_star=season_type, league_id_nullable=league_id,
+        measure_type_detailed_defense=measure, per_mode_detailed="Totals", timeout=API_TIMEOUT
     )
 
-def shot_chart_extract(season, league_id, season_type, engine):
-    shot_pull = get_shot_charts(season, season_type)
-    team_ids = [t['id'] for t in teams.get_teams()]
-    shot_rows = []
-    league_avg_df = None
-    failed_teams = []
+    on_off = pd.concat([
+        endpoint.players_off_court_team_player_on_off_details.get_data_frame(),
+        endpoint.players_on_court_team_player_on_off_details.get_data_frame()
+    ], ignore_index=True)
 
-    for team_id in team_ids:
-        try:
-            dfs = fetch_with_retry(shot_pull['fetch_fn'], team_id)
-            shot_rows.append(dfs[0])
-            if league_avg_df is None:
-                league_avg_df = dfs[1]
+    if "COURT_STATUS" not in on_off.columns:
+        raise ValueError(f"TeamPlayerOnOffDetails ({measure}) returned no COURT_STATUS column")
+    return on_off
 
-        except Exception as e:
-            logging.warning(f"Failed shot chart for team {team_id}: {e}.")
-            failed_teams.append(team_id)
+def on_off_extract(team_ids, season, league_id, season_type, engine):
+    '''
+    Team and opponent box scopre with each player's on and offs.
+    '''
+    problems = []
+    for measure, (name, table_name) in ON_OFF_PULLS.items():
+        calls = [
+            (str(team_id), lambda t=team_id, m=measure: fetch_on_off(t, m, season, league_id, season_type))
+            for team_id in team_ids
+        ]
+        problems += run_keyed_pull(name, table_name, calls, season, league_id, season_type, engine)
+    return problems
 
-        time.sleep(RATE_LIMIT_SLEEP)
-
-    if shot_rows:
-        shots_df = pd.concat(shot_rows, ignore_index=True)
-        shots_df = stamp_run_metadata(shots_df, season, league_id, season_type, 'shot_chart_detail')
-        load_to_postgres(shots_df, shot_pull['shots_table'], engine)
-    if league_avg_df is not None:
-        league_avg_df = stamp_run_metadata(league_avg_df, season, league_id, season_type, 'shot_zone_league_averages')
-        load_to_postgres(league_avg_df, shot_pull['league_avg_table'], engine)
-    if failed_teams:
-        paths = get_checkpoint_paths(season, league_id, season_type)
-        with open(paths['failed_shot_teams'], 'w') as f:
-            json.dump(failed_teams, f)
-    
-    logging.info(f"Shot chart extract: {len(shot_rows)} teams succeeded. {len(failed_teams)} failed.")
+def get_engine():
+    host = os.environ.get("NBA_DB_HOST")
+    port = os.environ.get("NBA_DB_PORT")
+    url = URL.create(
+        "postgresql+psycopg2",
+        username=os.environ.get("NBA_DB_USER"),
+        password=os.environ.get("NBA_DB_PASSWORD"),
+        host=host,
+        port=int(port) if port else None,
+        database=os.environ.get("NBA_DB_NAME"),
+        query={"sslmode": os.environ.get("NBA_DB_SSLMODE", "prefer")}
+    )
+    return create_engine(url, pool_pre_ping=True)
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Extract NBA stats and load into the warehouse.")
@@ -422,85 +553,84 @@ def parse_args():
     return parser.parse_args()
 
 
-
-
-def stamp_run_metadata(df, season, league_id, season_type, pull_name=''):
-    '''
-    Adds season_id / league_id / season_type columns into the DataFrame before load.
-    Required since nba_api endpoints doing return these fields on their own.
-    '''
-    if pull_name == 'team_standings':
-        df = df.loc[:, ~df.columns.str.startswith('Seeding_Game')]
-    df = df.copy()
-    if pull_name in ['player_info', 'team_rosters']:
-        df['_extract_season'] = season
-        df['_extract_league_id'] = league_id 
-    else:
-        df['_extract_season'] = season
-        df['_extract_league_id'] = league_id
-        df['_extract_season_type'] = season_type 
-    return df
-
 def run_extract(season, league_id, season_type, engine, incremental=False):
-    logging.info(f"Clearing existing rows for {season}/{LEAGUE_TYPE[league_id]}/{season_type} before reload.")
-    clear_season_level(season, league_id, season_type, engine, incremental=incremental)
+    '''
+    Returns a list of problems if run not sucessful.
+    '''
+    label = f"{season} / {LEAGUE_TYPE[league_id]} / {season_type}"
+    banner = "---" * 10
 
-    checkpoint_paths = get_checkpoint_paths(season, league_id, season_type)
+    logger.info(f"{banner} Season-level extract: {label} {banner}")
+    bulk, problems = run_bulk_pulls(season, league_id, season_type, engine)
 
-    logging.info(f"{'---' * 10} Season-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    season_stats = {}
-    for pull in get_bulk_pulls(season, league_id, season_type):
-        try:
-            logging.info(f"Fetching data for {pull['name']}...")
-            df = fetch_with_retry(pull['fetch_fn'])
-            if pull.get('static'):
-                load_to_postgres(df, pull['table'], engine, if_exists="replace")
-            else:
-                df = stamp_run_metadata(df, season, league_id, season_type, pull['name'])
-                load_to_postgres(df, pull['table'], engine)
-            season_stats[pull['name']] = df
-        except Exception as e:
-            logging.error(f"Error occurred while fetching data for {pull['name']}: {e}")
-            season_stats[pull['name']] = None
+    team_log = bulk.get("team_basic_boxscores")
+    if team_log is None:
+        problems.append("Skipped game, roster and shot extracts: no game log.")
+        return problems
 
-    logging.info(f"{'---' * 10} Game-level extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    if season_stats.get('team_basic_boxscores') is None:
-        raise RuntimeError("team_basic_boxscores failed to load. Therefore cannot derive game_ids for game-level extract.")
-    game_ids = season_stats['team_basic_boxscores']['GAME_ID'].unique()
-    game_level_extract(game_ids, season, league_id, season_type, engine, checkpoint_paths, incremental=incremental)
+    game_ids = team_log['GAME_ID'].unique().tolist()
+    team_ids = native(team_log['TEAM_ID'].unique())
 
-    logging.info(f"{'---' * 10} Team dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    team_dimension_extract(season, league_id, season_type, engine)
+    logger.info(f"{banner} Game-level extract: {label} {banner}")
+    problems += game_level_extract(game_ids, season, league_id, season_type, engine, incremental)
 
-    logging.info(f"{'---' * 10} Player dimension extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    if season_stats.get('player_basic_boxscores') is None:
-        raise RuntimeError("player_basic_boxscores failed to load. Therefore cannot derive player_ids for player-level extract.")
-    player_ids = season_stats['player_basic_boxscores']['PLAYER_ID'].unique()
-    player_dimension_extract(player_ids, season, league_id, season_type, engine, checkpoint_paths)
+    logger.info(f"{banner} Team dimesnion extract: {label} {banner}")
+    problems += team_dimension_extract(team_ids, season, league_id, season_type, engine)
 
-    logging.info(f"{'---' * 10} Shot chart extract: {season} / {LEAGUE_TYPE[league_id]} / {season_type} {'---' * 10}")
-    shot_chart_extract(season, league_id, season_type, engine)
+    logger.info(f"{banner} Player dimension extract: {label} {banner}")
+    player_log = bulk.get("player_basic_boxscores")
+    if player_log is None:
+        problems.append("Skipped player dimension extract: No player game log.")
+    else:
+        player_ids = native(player_log['PLAYER_ID'].unique())
+        problems += player_dimension_extract(player_ids, season, league_id, season_type, engine)
+
+    logger.info(f"{banner} Shot chart extract: {label} {banner}")
+    problems += shot_chart_extract(team_ids, season, league_id, season_type, engine)
+
+    logger.info(f"{banner} Play types: {label} {banner}")
+    problems += play_type_extract(season, league_id, season_type, engine)
+
+    logger.info(f"{banner} Defense dashboard: {label} {banner}")
+    problems += defense_dashboard_extract(season, league_id, season_type, engine)
+
+    logger.info(f"{banner} On/Off: {label} {banner}")
+    problems += on_off_extract(team_ids, season, league_id, season_type, engine)
+
+    return problems
 
 def main():
     args = parse_args()
-    CHECKPOINT_DIR.mkdir(parents=True, exist_ok=True)
-    engine = create_engine(f"postgresql://{NBA_DB_USER}:{NBA_DB_PASSWORD}@{NBA_DB_HOST}:{NBA_DB_PORT}/{NBA_DB_NAME}")
+    FAILURE_DIR.mkdir(parents=True, exist_ok=True)
+    engine = get_engine()
+    start = time.time()
 
-    start_script = time.time()
+    load_static_tables(engine)
 
+    all_problems = {}
     for season in args.seasons:
         start_season = time.time()
         logging.info(f"{'==' * 10} Starting extract: season={season}, league={args.league}, season_type={args.season_type} {'==' * 10}")
         try:
-            run_extract(season, args.league, args.season_type, engine, args.incremental)
+            problems = run_extract(season, args.league, args.season_type, engine, args.incremental)
         except Exception as e:
-            logging.error(f"Season {season} failed entirely: {e}.")
-        logging.info(f"{'====' * 10} Finished {season} in {((time.time() - start_season) / 60):.2f} minutes {'====' * 10}")
-    elapsed = time.time() - start_script
+            logging.error(f"Season {season} crashed: {e}.")
+            problems = [f"crashed: {e}"]
+        if problems:
+            all_problems[season] = problems
+        logging.info(f"{'====' * 10} Finished {season} in {((time.time() - start_season) / 60):.2f} minutes. {'====' * 10}")
+
+    elapsed = int(time.time()) - start
     hours = int(elapsed // 3600)
     minutes = int((elapsed % 3600) // 60)
     seconds = int(elapsed % 60)
     logging.info(f"Extract complete. {hours} hours, {minutes} minutes, and {seconds} seconds elapsed.")
+
+    if all_problems:
+        for season, problems in all_problems.items():
+            logger.error(f"{season}: " + ": ".join(problems))
+        sys.exit(1)
+    
 
 if __name__ == "__main__":
     main()

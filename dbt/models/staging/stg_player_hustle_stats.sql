@@ -1,0 +1,25 @@
+SELECT CAST("PLAYER_ID" AS VARCHAR) AS player_id
+    , CAST("PLAYER_NAME" AS VARCHAR) AS player_name
+    , CAST("TEAM_ID" AS VARCHAR) AS team_id
+    , CAST("TEAM_ABBREVIATION" AS VARCHAR) AS team_abbreviation
+    , CAST(_extract_season AS VARCHAR) AS season
+    , CAST(_extract_league_id AS VARCHAR) AS league_id
+    , CAST(_extract_season_type AS VARCHAR) AS season_type
+    , CAST("G" AS INTEGER) AS games_played
+    , CAST("MIN" AS NUMERIC) AS minutes 
+    , CAST("CONTESTED_SHOTS" AS NUMERIC) AS contested_shots
+    , CAST("CONTESTED_SHOTS_2PT" AS NUMERIC) AS contested_shots_2pt
+    , CAST("CONTESTED_SHOTS_3PT" AS NUMERIC) AS contested_shots_3pt
+    , CAST("DEFLECTIONS" AS NUMERIC) AS deflections
+    , CAST("CHARGES_DRAWN" AS NUMERIC) AS charges_drawn
+    , CAST("SCREEN_ASSISTS" AS NUMERIC) AS screen_assists
+    , CAST("SCREEN_AST_PTS" AS NUMERIC) AS screen_assist_pts
+    , CAST("OFF_LOOSE_BALLS_RECOVERED" AS NUMERIC) AS off_loose_balls_recovered
+    , CAST("DEF_LOOSE_BALLS_RECOVERED" AS NUMERIC) AS def_loose_balls_recovered
+    , CAST("LOOSE_BALLS_RECOVERED" AS NUMERIC) AS loose_balls_recovered
+    , CAST("OFF_BOXOUTS" AS NUMERIC) AS off_boxouts
+    , CAST("DEF_BOXOUTS" AS NUMERIC) AS def_boxouts
+    , CAST("BOX_OUTS" AS NUMERIC) AS boxouts
+    , CAST("BOX_OUT_PLAYER_TEAM_REBS" AS NUMERIC) AS boxout_team_rebs
+    , CAST("BOX_OUT_PLAYER_REBS" AS NUMERIC) AS boxout_player_rebs
+FROM {{ source('raw_nba', 'player_hustle_stats') }}

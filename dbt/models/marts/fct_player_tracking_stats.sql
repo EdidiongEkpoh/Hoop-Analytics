@@ -20,7 +20,7 @@ WITH base AS (
         , league_id
         , season_type
         , SUM(total_possessions) AS total_possessions
-    FROM {{ ref('int_player_possessions') }}
+    FROM {{ ref('int_player_season_stats') }}
     GROUP BY 1, 2, 3, 4
 )
 SELECT b.player_id
