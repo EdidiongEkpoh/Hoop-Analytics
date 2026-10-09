@@ -17,7 +17,7 @@ from sqlalchemy import MetaData, create_engine, text
 from sqlalchemy.engine import URL 
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s",
-                    datefmt="%Y-%m-d %H:%M:%S")
+                    datefmt="%Y-%m-%d %H:%M:%S")
 log = logging.getLogger("publish")
 
 SCHEMA = os.environ.get("NBA_MARTS_SCHEMA", "marts")
@@ -91,7 +91,7 @@ def main():
 
     # 2. Copy and verify each table
     with src.connect() as conn:
-        expected = {t.name: conn.execute(text(f'SELECT COUNT(*) FROM "{SCHEMA}"."{t.name}"')).scalar for t in tables}
+        expected = {t.name: conn.execute(text(f'SELECT COUNT(*) FROM "{SCHEMA}"."{t.name}"')).scalar() for t in tables}
     for t in tables:
         t0 = time.time() 
         got = copy_table(src, tgt, t)
@@ -110,7 +110,7 @@ def main():
         conn.execute(text(f'ALTER SCHEMA "{INCOMING}" RENAME TO "{SCHEMA}"'))
         role = os.environ.get("NEON_APP_ROLE")
         if role:
-            conn.execute(text(f'GRANT USAGE ON "{SCHEMA}" TO "{role}"'))
+            conn.execute(text(f'GRANT USAGE ON SCHEMA "{SCHEMA}" TO "{role}"'))
             conn.execute(text(f'GRANT SELECT ON ALL TABLES IN SCHEMA "{SCHEMA}" TO "{role}"'))
 
     with tgt.begin() as conn:
