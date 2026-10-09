@@ -20,8 +20,8 @@ prev = prev.iloc[0] if len(prev) else None
 
 ui.page_header(f"The {f.season} season", f"{f.season_type}")
 
-KPIS = [("pace", "Pace"), ("offensive_rating", "Points per 100 possessions"), ('fg3pr', "Rate of three point attempts"),
-        ("ts_pct", "True shooting efficiency")]
+KPIS = [("pace", "League AVG Pace"), ("offensive_rating", "League AVG Offensive Rating"), ('fg3pr', "League AVG 3PR"),
+        ("ts_pct", "League AVG TS%")]
 cards = []
 for key, label in KPIS:
     delta, _ = ui.season_delta(key, now[key], prev[key] if prev is not None else None, f.previous_season)

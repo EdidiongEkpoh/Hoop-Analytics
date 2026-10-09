@@ -31,7 +31,7 @@ if mode == "Players":
     if data.empty:
         ui.empty_state(f"No {f.season_type.lower()} data.")
         st.stop()
-    pct_keys = ["pts", "reb", "ast", "stl", "blk", "ts_pct", "relative_ts_pct", "fg3_pct", "fg3pr", "ftr", "usage", "assist_pct",
+    pct_keys = ["pts", "reb", "ast", "stl", "blk", "ts_pct", "fg3_pct", "fg3pr", "ftr", "usage", "assist_pct",
                 "tov_pct", "reb_pct", "stl_pct", "blk_pct"]
     pct_cols = [stats.column(k, G) for k in pct_keys]
 
@@ -71,14 +71,14 @@ if mode == "Players":
             st.caption(f"{p['player_name']} in {s} is below the qualifying threshold; his percentiles compare them with qualified players.")
     c1, c2 = st.columns(2)
     with c1:
-        compare_rows([("Production", ["games_played", "minutes_per_game"] + [stats.column(k, G) for k in ["pts", "reb", "ast", "stl", "blk", "tov"]])], pa, pb)
+        compare_rows([("", ["games_played", "minutes_per_game"] + [stats.column(k, G) for k in ["pts", "reb", "ast", "stl", "blk", "tov"]])], pa, pb)
     with c2:
-        compare_rows([("Shooting", ["ts_pct", "relative_ts_pct", "efg_pct", "fg2_pct", "fg3_pct", "ft_pct", "fg3pr", "ftr"])], pa, pb)
+        compare_rows([("", ["ts_pct", "relative_ts_pct", "efg_pct", "fg2_pct", "fg3_pct", "ft_pct", "fg3pr", "ftr"])], pa, pb)
     c1, c2 = st.columns(2)
     with c1:
-        compare_rows([("Role and Playmaking", ["usage", "assist_pct", "tov_pct", "oreb_pct", "dreb_pct", "reb_pct"])], pa, pb)
+        compare_rows([("", ["usage", "assist_pct", "tov_pct", "oreb_pct", "dreb_pct", "reb_pct"])], pa, pb)
     with c2:
-        compare_rows([("Defense and Impact", ["stl_pct", "blk_pct", "offensive_rating", "defensive_rating", "net_rating"])], pa, pb)
+        compare_rows([("", ["stl_pct", "blk_pct", "offensive_rating", "defensive_rating", "net_rating"])], pa, pb)
     
     label_a = pa["player_name"] + ("" if sa == sb else f" ({sa})")
     label_b = pb["player_name"] + ("" if sa == sb else f" ({sb})")
