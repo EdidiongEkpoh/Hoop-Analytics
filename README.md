@@ -1,63 +1,93 @@
 # Hoop Analytics
 
-An end-to-end NBA analytics platform. Built by Python pipeline that pulls data from `nba_api`, 
-includes daily in-season refreshes via Airflow, utilizes dbt to transform raw data into layers, and a 
-multi-page Streamlit dashboard that features an overview, team, player, and comparison pages.
+An end-to-end NBA analytics platform that covers the 2020-21 through 2025-26 (and counting) seasons. 
+Built by Python pipeline that pulls 13 `nba_api` endpoints into a PostgreSQL warehouse, dbt models the
+raw data into tested staging, intermediate, and mart layers, and Airflow refreshes everything daily
+during the season and publishes the finished marts to Neon, where a six-page Streamlit dashboard reads them. 
 
 [Live App](https://hoop-analytics-qhy32etanpqsvqpxwyjkez.streamlit.app/)
 
 
 # Main Components
-- **League Overview** - Season standings, league leaders, and visuals that depict general team/player performance
-- **Team Overview** - Four Factors (efg%, REB%, TOV%, FTR) for offense and defense, team rolling net rating, team shot distribution, and player usage
-- **Player Overview** - Per game, per 36, per 75/100 possession counting stats with percentiles, shot charts, and scoring type breakdowns
-- **Comparison** - side-by-side team and player statistical comparisons across all seasons in DB (2021-2026 as of 9/23/26)
+- **League** - Season standings, decade-long scoring and pace trends, a team efficiency quadrant chart (offensive vs defensive rating)
+  league-wide play-type mix, and a sortable leaders table with Basic, Advanced, and Tracking stats.
+- **Teams** - Four Factors (efg%, REB%, TOV%, FTR) for offense and defense with league rankings, team rolling net rating, team shot distribution, Synergy play types, player on/off splits and usage
+- **Players** - Per game, per 36, per 75/100 possession counting stats with percentiles that compare to other players in respective season.   Includes shot charts, play types, defense/hustle stats, on/off impact and statistical influences.
+- **Compare** - Side-by-side team and player statistical comparisons across any season in the database.
+- **Explorer** - Plot any two stats against each other for the whole league and click through to a player
+- **About** - Project summary, key components, and disclaimers
 
-# Scope 
-Only features NBA regular season and playoff data from the 2020-21 seasons to the most recent 2025-26 season. WNBA (and maybe even NCAA)
-data will be integrated at a later date, which would make the **league** filter more useful.
+# The Data
+| | |
+|---|---|
+| Seasons | 2020-21 to 2025-26, regular season and playoffs |
+| Sources | Game logs, advanced box scores, shot charts, player tracking, hustle, Synergy play types, defense dashboard, on/off splits, team misc stats, standings, rosters |
+| Warehouse | ~1.7M rows across 21 mart tables, including 1.37M individual shots and 165K player games |
+
+# How It Works
+
+**Extract.** `extract.py` pulls each endpoint and loads it into the `raw` schema. Every load is an atomic
+delete-and-insert scoped to a game, player or team, so reruns never duplicate rows and a failed pull never
+leaves an incomplete season in the DB. `--incremental` checks the database for what's already loaded and only
+fetches what's new.
+
+**Transform.** dbt builds three layers: `staging` (typed, renamed, deduplicated sources), `intermediate`
+(additive season totals) and `marts` (final layer). Every rate (shooting percentages, per-36, per-100,
+ratings) is calculated from aggregates sesason totals. Shared logic lives in macros, and models are covered by
+uniqueness, not-null and range tests.
+
+**Orchestrate and publish.** An Airflow DAG runs every morning from October to June: extract the regular
+season and/or playoffs (depending on the month), `dbt build`, then publish. The publish step only runs if every
+dbt test passes. It copies the marts to a holding schema on Neon, checks the row counts, and swaps it in
+inside a single transaction.
+
+**Serve.** The Streamlit app shares one filter bar (season, season type, stat grain) across pages and keeps
+selections in the URL so any view can be bookmarked. Queries are cached for 24 hours for past seasons and
+1 hour for the current one.
 
 # Tech Stack
 | Layer | Tools |
 |---|---|
 | Extraction | Python, `nba_api`, `pandas`, `SQLAlchemy` |
-| Orchestration | Apache Airflow (Docker) |
-| Warehouse | PostgreSQL containerized locally via Docker -> pushed to Neon |
-| Transformation | dbt |
-| Dashboard | Streamlit (Tableau/Power BI soon) |
-| Hosting | Streamlit Community Cloud (Tableau Public soon) |
-
-The pipeline (extraction, Airflow, dbt) rus locally against a Dockerized Postgres wearehouse. The deployed dashboard reads
-from a separate Neon instance that holds the dbt layers.
+| Warehouse | PostgreSQL (Docker) locally, published to Neon |
+| Transformation | dbt (`dbt_utils`) |
+| Orchestration | Apache Airflow (Docker Compose) |
+| Dashboard | Streamlit, Plotly |
+| Hosting | Streamlit Community Cloud |
 
 ## Getting Started
 
 ```bash
-git clone <repo-url>
-cd hoop-analytics
+git clone https://github.com/EdidiongEkpoh/Hoop-Analytics.git
+cd Hoop-Analytics
 cp .env.example .env   # fill in your own credentials
 docker compose up -d --build
 ```
 
-Once the containers are healthy, trigger the DAG from the Airflow UI at `http://localhost:8080` (DAG: `hoop_analytics_pipeline`), or run manually:
+Once the containers are healthy, trigger the DAG from the Airflow UI at `http://localhost:8080`
+(DAG: `hoop_analytics_pipeline`), or run the steps manually:
+
 ```bash
 docker compose exec airflow-scheduler bash -c \
   "cd /opt/airflow/extract && python3 extract.py --seasons 2025-26 --league 00"
 docker compose exec airflow-scheduler bash -c \
-  "cd /opt/airflow/dbt && dbt deps --profiles-dir . && dbt run --profiles-dir . && dbt test --profiles-dir ."
+  "cd /opt/airflow/dbt && dbt deps --profiles-dir . && dbt seed --profiles-dir . && dbt build --profiles-dir ."
+docker compose exec airflow-scheduler bash -c \
+  "cd /opt/airflow/publish && python3 publish_marts.py"   # optional: copy marts to Neon
 ```
 
-To run the dashboard locally against your own warehouse:
+To run the dashboard locally:
+
 ```bash
-cd streamlit
+cd app
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Project structure
+## Project Structure
 
 ```
-hoop-analytics/
+Hoop-Analytics/
 ├── docker-compose.yml
 ├── .env.example
 ├── airflow/
@@ -66,6 +96,8 @@ hoop-analytics/
 │   └── dags/hoop_analytics_pipeline.py
 ├── extract/
 │   └── extract.py
+├── publish/
+│   └── publish_marts.py          # copies marts to Neon with an atomic schema swap
 ├── postgres-init/
 │   └── 01-schemas.sql
 ├── dbt/
@@ -73,23 +105,22 @@ hoop-analytics/
 │   ├── packages.yml
 │   ├── profiles.yml
 │   ├── macros/
+│   ├── seeds/
 │   ├── models/{staging,intermediate,marts}/
 │   └── tests/
-└── streamlit/
-    ├── app.py
-    ├── Home.py
-    ├── db.py
-    ├── ui.py
-    └── pages/
+└── app/
+    ├── app.py                    # navigation and the shared filter bar
+    ├── lib/                      # db, queries, stats registry, charts, components
+    └── views/                    # league, teams, players, compare, explorer, about
 ```
 
 # What's Next?
-1. Larger backfill of data (from 2016-2020 to start)
-2. Adding WNBA
+1. Larger backfill of data (2016-17 through 2019-20 to start)
+2. More in-depth lineup data and statistical influences for team page.
+3. Adding WNBA
 3. More all-in-one metrics like BPM, EPM, and maybe even RAPM
-4. Season over season visuals
-5. Tableau Dashboard
-6. Misc. tweaks to UI
+4. Tableau dashboard
+5. Misc. tweaks to the UI
 
 # Inspiration
 I love basketball and I love data. Two sites that have blended these two concepts beautifully are databallr ([Site](https://databallr.com/) | [Twitter](https://x.com/databallr))
