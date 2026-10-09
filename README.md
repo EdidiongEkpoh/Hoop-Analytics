@@ -4,7 +4,7 @@ An end-to-end NBA analytics platform. Built by Python pipeline that pulls data f
 includes daily in-season refreshes via Airflow, utilizes dbt to transform raw data into layers, and a 
 multi-page Streamlit dashboard that features an overview, team, player, and comparison pages.
 
-[Live App](https://hoop-analytics-jekmmdgrkfr8s4by9sjhgv.streamlit.app/)
+[Live App](https://hoop-analytics-qhy32etanpqsvqpxwyjkez.streamlit.app/)
 
 
 # Main Components
